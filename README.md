@@ -51,6 +51,9 @@ The Trips page splits **Current trips** and **Completed trips**. A trip is compl
 
 A trip page has four buttons: **Bets**, **Receipts**, **Rounds** and **Players**. Bets and receipts settle up separately: **Bets** ends with a bets-only settle-up, and **Receipts** has its own settle-up (what each person paid minus their share). Each lists the fewest payments that square that ledger.
 
+## Feed, likes, comments and attests
+Each posted round shows as a card with Score, Putts, Tiger 5 and Differential circles (green = good, gold = so-so, red = rough), its trophy or poo rating, and 🍺 / 💨 GB totals. Friends can **Like** a round, **Comment** on it, and **Attest** it to vouch for the score (you can't attest your own). `supabase/social.sql` holds these tables (already applied to the live database); only people who can see a round can see or add to its likes, comments and attests.
+
 ## Betting Board
 `supabase/board.sql` turns on the **Board** tab (already applied to the live database).
 

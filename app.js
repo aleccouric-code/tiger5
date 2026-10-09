@@ -113,7 +113,7 @@ function toRow(d,t,index,extra){
 
 /* ---------- state ---------- */
 const DKEY='tiger5-draft-v2',OLDKEY='tiger5-rounds-v1',IMPKEY='tiger5-imported-v1',OUTKEY='tiger5-outbox',CACHEKEY='tiger5-cache',INVKEY='tiger5-invite';
-const S={status:'loading',me:null,email:'',profiles:{},friendships:[],rounds:{},view:'feed',arg:null,busy:false,confirm:null,editName:false,nsel:'18',authStep:'signin',authEmail:'',offline:false,invite:null,trips:[],tripMembers:{},bets:{},tripsOk:true,tripSel:[],betKind:'putts',betScoring:'total',tripTabs:{},board:[],boardPicks:{},boardOk:true,bbOpts:2,settling:null,expenses:{},exSplit:null,exPaidBy:null,receiptView:null};
+const S={status:'loading',me:null,email:'',profiles:{},friendships:[],rounds:{},view:'feed',arg:null,busy:false,confirm:null,editName:false,nsel:'18',authStep:'signin',authEmail:'',offline:false,invite:null,trips:[],tripMembers:{},bets:{},tripsOk:true,tripSel:[],betKind:'putts',betScoring:'total',tripTabs:{},board:[],boardPicks:{},boardOk:true,bbOpts:2,settling:null,expenses:{},exSplit:null,exPaidBy:null,receiptView:null,likes:{},comments:{},attests:{}};
 let draft=LS.get(DKEY,null),hidx=0,playView=draft&&draft.holes?'hole':'start',lastKey='';
 if(draft&&!draft.holes)draft=null;
 const saveDraft=()=>LS.set(DKEY,draft);
@@ -134,8 +134,8 @@ const isNetErr=(e)=>!navigator.onLine||(e&&(e instanceof TypeError||/fetch|netwo
 function fail(e,what){console.error(e);toast(isNetErr(e)?'You’re offline. Try again when you have signal.':(what||'That didn’t save.')+' '+(e&&e.message?e.message:''))}
 
 /* ---------- loading ---------- */
-function cacheSave(){LS.set(CACHEKEY,{me:S.me,profiles:S.profiles,friendships:S.friendships,rounds:S.rounds,trips:S.trips,tripMembers:S.tripMembers,bets:S.bets,board:S.board,boardPicks:S.boardPicks,expenses:S.expenses})}
-function cacheLoad(){const c=LS.get(CACHEKEY,null);if(!c||c.me!==S.me)return false;S.profiles=c.profiles||{};S.friendships=c.friendships||[];S.rounds=c.rounds||{};S.trips=c.trips||[];S.tripMembers=c.tripMembers||{};S.bets=c.bets||{};S.board=c.board||[];S.boardPicks=c.boardPicks||{};S.expenses=c.expenses||{};return true}
+function cacheSave(){LS.set(CACHEKEY,{me:S.me,profiles:S.profiles,friendships:S.friendships,rounds:S.rounds,trips:S.trips,tripMembers:S.tripMembers,bets:S.bets,board:S.board,boardPicks:S.boardPicks,expenses:S.expenses,likes:S.likes,comments:S.comments,attests:S.attests})}
+function cacheLoad(){const c=LS.get(CACHEKEY,null);if(!c||c.me!==S.me)return false;S.profiles=c.profiles||{};S.friendships=c.friendships||[];S.rounds=c.rounds||{};S.trips=c.trips||[];S.tripMembers=c.tripMembers||{};S.bets=c.bets||{};S.board=c.board||[];S.boardPicks=c.boardPicks||{};S.expenses=c.expenses||{};S.likes=c.likes||{};S.comments=c.comments||{};S.attests=c.attests||{};return true}
 
 async function loadAll(){
  try{
@@ -159,6 +159,7 @@ async function loadAll(){
    if(!e4)(tr||[]).forEach(r=>{const x=fromRow(r);(rounds[x.uid]=rounds[x.uid]||[]).push(x)});
   }
   S.rounds=rounds;addPendingLocal();
+  await loadSocial(rounds);
   S.status='ready';S.offline=false;cacheSave();
   render();
   flushOutbox();checkInvite();
@@ -198,6 +199,27 @@ async function loadTrips(profiles,friendsAndMe){
   else throw e;
   return [];
  }
+}
+// Likes, comments and attests for every loaded round (fetched 100 rounds at a time).
+async function loadSocial(rounds){
+ const ids=Object.values(rounds).flat().filter(r=>!r.pending).map(r=>r.id);
+ const likes={},comments={},attests={};
+ try{
+  for(let i=0;i<ids.length;i+=100){
+   const chunk=ids.slice(i,i+100);
+   const [l,c,a]=await Promise.all([
+    sb.from('round_likes').select('round_id,user_id').in('round_id',chunk),
+    sb.from('round_comments').select('*').in('round_id',chunk).order('created_at'),
+    sb.from('round_attests').select('round_id,user_id').in('round_id',chunk)]);
+   for(const x of [l,c,a])if(x.error)throw x.error;
+   l.data.forEach(x=>(likes[x.round_id]=likes[x.round_id]||[]).push(x.user_id));
+   c.data.forEach(x=>(comments[x.round_id]=comments[x.round_id]||[]).push(x));
+   a.data.forEach(x=>(attests[x.round_id]=attests[x.round_id]||[]).push(x.user_id));
+  }
+  S.likes=likes;S.comments=comments;S.attests=attests;
+  const need=[...new Set([...Object.values(likes).flat(),...Object.values(attests).flat(),...Object.values(comments).flat().map(c=>c.user_id)])].filter(u=>!S.profiles[u]);
+  if(need.length){const {data}=await sb.from('profiles').select('id,handle').in('id',need);(data||[]).forEach(p=>S.profiles[p.id]=p)}
+ }catch(e){console.error(e)}
 }
 // Loads Betting Board bets the viewer can see, with everyone's picks.
 // Like trips, a missing board.sql leaves the rest of the app working.
@@ -328,7 +350,7 @@ function allFeedRounds(){
 }
 // Per-hole extras (beers, GB) added up for a round.
 const holeSum=(r,k)=>(r.holes||[]).reduce((a,h)=>a+(+h[k]||0),0);
-const extrasTags=(r)=>{const b=holeSum(r,'beer'),g=holeSum(r,'gb');return (b?`<span class="tag gold">🍺 ${b}</span>`:'')+(g?`<span class="tag">GB ${g}</span>`:'')};
+const extrasTags=(r)=>{const b=holeSum(r,'beer'),g=holeSum(r,'gb');return (b?`<span class="tag gold">🍺 ${b}</span>`:'')+(g?`<span class="tag">💨 GB ${g}</span>`:'')};
 // Round rating from Tiger 5 misses. Trophies: 0 → three, 1 → two, 2–3 → one
 // (finished rounds only, so a few clean holes don't earn them).
 // Poo: 4–7 → one, 8–10 → two, 11+ → three.
@@ -340,7 +362,38 @@ function rateBadge(r){
  const n=pooCount(t5);if(!n)return '';
  return `<span class="tag poo" role="img" aria-label="Poo rating ${n} of 3: ${t5} Tiger 5 misses" title="${t5} Tiger 5 misses">${'💩'.repeat(n)}</span>`;
 }
+const relDay=(s)=>{const n=Math.round((new Date(today()+'T12:00:00')-new Date(s+'T12:00:00'))/864e5);return n===0?'Today':n===1?'Yesterday':n>1&&n<7?n+' days ago':fmtDate(s)};
+const FLAG='<svg class="flag" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 21V3l10 4-10 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><ellipse cx="7" cy="21" rx="5" ry="1.6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
+const namesList=(ids)=>{const n=ids.map(u=>u===S.me?'you':handle(u));return n.length<=2?n.join(' & '):n.slice(0,2).join(', ')+' +'+(n.length-2)};
+// Feed card: who/when, course, four stat circles colored good / so-so / rough, badges, then Like · Comment · Attest.
+function feedCard(r){
+ const mine=r.uid===S.me,ix=hcp(S.rounds[r.uid]).index;
+ const likes=S.likes[r.id]||[],coms=S.comments[r.id]||[],att=S.attests[r.id]||[];
+ const good='var(--green)',ok='var(--gold)',bad='var(--red)',none='var(--line)';
+ const p18=r.putts!=null&&r.holesPlayed?r.putts/r.holesPlayed*18:null;
+ const rings=[
+  ['Score',r.score,r.complete?rel(r.score-r.parPlayed):r.holesPlayed+' holes',r.diff==null?none:ix==null?ok:r.diff<=ix?good:r.diff<=ix+3?ok:bad],
+  ['Putts',r.putts==null?'–':r.putts,r.putts==null?'not tracked':(p18/18).toFixed(1)+'/hole',p18==null?none:p18<=32?good:p18<=36?ok:bad],
+  ['Tiger 5',r.t5,'misses',r.t5<=3?good:r.t5<=7?ok:bad],
+  ['Diff',fmtDiff(r.diff),r.diff==null?'not rated':'differential',r.diff==null?none:ix==null?ok:r.diff<=ix?good:r.diff<=ix+3?ok:bad]];
+ const key=esc(r.uid)+'/'+esc(r.id);
+ return `<article class="card fcard">
+ <button class="fmain" data-round="${key}" aria-label="Open ${esc(mine?'your':handle(r.uid)+'’s')} round at ${esc(r.course)}">
+  <div class="fhead">${av(r.uid)}<div class="mid"><b>${esc(mine?'You':handle(r.uid))}${ix!=null?` <span class="fidx">${fmtIdx(ix)}</span>`:''}</b></div><span class="fwhen">${relDay(r.date)}</span></div>
+  <div class="fcourse">${FLAG}<span>${esc(r.course)}</span></div>
+  <div class="ftee">${[r.tee?esc(r.tee)+' tees':'',r.n===9?(r.nine==='back'?'Back 9':'Front 9'):''].filter(Boolean).join(' · ')}</div>
+  <div class="rings">${rings.map(([l,v,s,c])=>`<div class="ring"><span class="rl">${l}</span><b style="--ring:${c}">${v}</b><small>${s}</small></div>`).join('')}</div>
+  <div class="tags">${rateBadge(r)}${extrasTags(r)}${att.length?`<span class="tag">✋ Attested by ${esc(namesList(att))}</span>`:''}${r.pending?'<span class="tag red">Waiting to post</span>':''}</div>
+ </button>
+ ${r.pending?'':`<div class="factions">
+  <button data-like="${esc(r.id)}" aria-pressed="${likes.includes(S.me)}">👍 <span>${likes.length?likes.length+' ':''}Like${likes.length===1||!likes.length?'':'s'}</span></button>
+  <button data-comments="${key}">💬 <span>${coms.length?coms.length+' ':''}Comment${coms.length===1||!coms.length?'':'s'}</span></button>
+  ${mine?'':`<button data-attest="${esc(r.id)}" aria-pressed="${att.includes(S.me)}">✋ <span>${att.includes(S.me)?'Attested':'Attest'}</span></button>`}
+ </div>`}
+ </article>`;
+}
 function roundItem(r,showWho=true){
+ if(showWho)return feedCard(r);
  return `<button class="card item" data-round="${esc(r.uid)}/${esc(r.id)}">
   ${showWho?av(r.uid):''}
   <div class="mid"><b>${showWho?esc(r.uid===S.me?'You':handle(r.uid))+' · ':''}${esc(r.course)}</b>
@@ -458,11 +511,23 @@ function roundView(key){
   <tr><td>Score</td>${sl.map(h=>`<td class="${fails(h).length?'miss':played(h)&&h.score<h.par?'u':''}">${played(h)?h.score:'–'}</td>`).join('')}<td><b>${sum(h=>h.score)}</b></td></tr>
   <tr><td>Putts</td>${sl.map(h=>`<td>${played(h)&&h.putts!=null?h.putts:'–'}</td>`).join('')}<td>${sl.some(h=>played(h)&&h.putts!=null)?sum(h=>played(h)?h.putts:0):'–'}</td></tr>
   ${holeSum(r,'beer')?`<tr><td>Beers</td>${sl.map(h=>`<td>${h.beer||''}</td>`).join('')}<td>${sum(h=>h.beer)}</td></tr>`:''}
-  ${holeSum(r,'gb')?`<tr><td>GB</td>${sl.map(h=>`<td>${h.gb||''}</td>`).join('')}<td>${sum(h=>h.gb)}</td></tr>`:''}</table></div>`};
+  ${holeSum(r,'gb')?`<tr><td>GB 💨</td>${sl.map(h=>`<td>${h.gb||''}</td>`).join('')}<td>${sum(h=>h.gb)}</td></tr>`:''}</table></div>`};
  h+=`<div class="card">${rows(0,9)}${rows(9,18)}<p class="hint" style="margin:0">Red holes broke a Tiger 5 rule. Green holes were under par.</p></div>`;
  h+=`<h2>Tiger 5</h2><div class="card"><table>`;
  RULES.forEach(q=>{const c=(r.per&&r.per[q.k])||0;h+=`<tr><td>${q.n}<div class="bar"><i style="width:${r.holesPlayed?Math.min(100,c/r.holesPlayed*300):0}%"></i></div></td><td class="n">${c}</td></tr>`});
  h+=`</table></div>`;
+ if(!r.pending){
+  const likes=S.likes[r.id]||[],att=S.attests[r.id]||[],coms=S.comments[r.id]||[];
+  h+=`<div class="factions" style="margin:4px 0 10px">
+   <button data-like="${esc(r.id)}" aria-pressed="${likes.includes(S.me)}">👍 <span>${likes.includes(S.me)?'Liked':'Like'}</span></button>
+   ${mine?'':`<button data-attest="${esc(r.id)}" aria-pressed="${att.includes(S.me)}">✋ <span>${att.includes(S.me)?'Attested':'Attest score'}</span></button>`}
+  </div>`;
+  if(likes.length||att.length)h+=`<p class="hint" style="margin:0 0 10px">${likes.length?'👍 Liked by '+esc(namesList(likes)):''}${likes.length&&att.length?' · ':''}${att.length?'✋ Attested by '+esc(namesList(att)):''}</p>`;
+  if(!att.length&&!mine)h+=`<p class="hint" style="margin:-4px 0 10px">Played with ${esc(handle(u))}? Attest to vouch for the score.</p>`;
+  h+=`<h2 id="comments">Comments${coms.length?' ('+coms.length+')':''}</h2><div class="card">`;
+  h+=coms.length?coms.map(c=>`<div class="comment">${av(c.user_id)}<div class="mid"><b>${esc(c.user_id===S.me?'You':handle(c.user_id))}</b> <span class="hint" style="margin:0">${relDay(c.created_at.slice(0,10))}</span><p>${esc(c.body)}</p></div>${c.user_id===S.me||mine?`<button class="link" data-delcomment="${esc(c.id)}" data-rid="${esc(r.id)}" aria-label="Delete comment">Delete</button>`:''}</div>`).join(''):`<p class="hint" style="margin:0 0 6px">No comments yet. Say something nice. Or don’t.</p>`;
+  h+=`<div class="row" style="margin-top:8px"><input id="cbody" maxlength="500" placeholder="Add a comment…" autocomplete="off"><button class="primary" style="flex:none" data-act="postcomment" data-id="${esc(r.id)}" ${S.busy?'disabled':''}>Post</button></div></div>`;
+ }
  if(mine&&!r.pending)h+=S.confirm==='del'?`<div class="card note"><p style="margin-top:0">Delete this round for good? It also comes off your handicap.</p><div class="row"><button class="danger" data-act="delround" data-id="${esc(r.id)}">Delete round</button><button data-act="cancelc">Keep it</button></div></div>`:`<button class="wide" data-act="ask" data-c="del">Delete round</button>`;
  return h;
 }
@@ -746,6 +811,14 @@ async function addBet(){
  const n=$('#bname');if(n)n.value='';$('#bstake').value='';
  toast('Bet added');loadAll();
 }
+// Like / attest toggles: update the screen right away, then save; undo on failure.
+async function toggleSocial(table,store,rid,msg){
+ const on=(store[rid]||[]).includes(S.me);
+ store[rid]=on?(store[rid]||[]).filter(u=>u!==S.me):[...(store[rid]||[]),S.me];render();
+ const q=on?sb.from(table).delete().eq('round_id',rid).eq('user_id',S.me):sb.from(table).insert({round_id:rid,user_id:S.me});
+ const {error}=await q;
+ if(error){store[rid]=on?[...(store[rid]||[]),S.me]:(store[rid]||[]).filter(u=>u!==S.me);fail(error,msg);render()}
+}
 async function toggleWinner(betId,u){
  const list=S.bets[S.arg]||[],i=list.findIndex(x=>x.id===betId);if(i<0)return;
  const w=new Set(list[i].winners||[]);w.has(u)?w.delete(u):w.add(u);
@@ -905,7 +978,7 @@ function holeView(){
  <button class="toggle" data-tg="ud" aria-pressed="${h.ud}"><span>Missed an easy up-and-down</span><b>${h.ud?'Yes':'No'}</b></button>
  <div class="row" style="margin-top:4px;align-items:flex-start">
   <div><label>Beers 🍺</label><div class="stepper sm"><button data-beer="-1" aria-label="One less beer">−</button><output>${h.beer||0}</output><button data-beer="1" aria-label="One more beer">+</button></div></div>
-  <div><label>GB</label><div class="stepper sm"><button data-gb="-1" aria-label="One less GB">−</button><output>${h.gb||0}</output><button data-gb="1" aria-label="One more GB">+</button></div></div>
+  <div><label>GB 💨</label><div class="stepper sm"><button data-gb="-1" aria-label="One less GB">−</button><output>${h.gb||0}</output><button data-gb="1" aria-label="One more GB">+</button></div></div>
  </div>
  <div class="chips">${p?(f.length?f.map(r=>`<span class="chip">${r.k==='r3'?'You Suck':'Nice Work Idiot'} - ${r.n.replace('No ','')}</span>`).join(''):'<span class="chip ok">Clean hole</span>'):''}</div></div>
  <div class="row"><button data-act="prev" ${hidx===0?'disabled':''}>Previous</button><button class="primary" data-act="next">${hidx===draft.holes.length-1?'Finish round':'Next hole'}</button></div>
@@ -992,6 +1065,23 @@ document.addEventListener('click',async e=>{
  if(d.bs){S.betScoring=d.bs;return render()}
  if(d.win)return toggleWinner(d.win,d.u);
  if(d.pickbet)return pickBoard(d.pickbet,+d.opt);
+ if(d.like)return toggleSocial('round_likes',S.likes,d.like,'Couldn’t save your like.');
+ if(d.attest)return toggleSocial('round_attests',S.attests,d.attest,'Couldn’t save your attest.');
+ if(d.comments){go('round',d.comments);setTimeout(()=>{const c=document.getElementById('comments');if(c)c.scrollIntoView();const i=document.getElementById('cbody');if(i)i.focus({preventScroll:true})},0);return}
+ if(d.delcomment){
+  S.comments[d.rid]=(S.comments[d.rid]||[]).filter(c=>c.id!==d.delcomment);render();
+  const {error}=await sb.from('round_comments').delete().eq('id',d.delcomment);
+  if(error){fail(error,'Couldn’t delete the comment.');loadAll()}return;
+ }
+ if(a==='postcomment'){
+  const body=$('#cbody').value.trim();if(!body)return toast('Write a comment first.');
+  const c={id:newId(),round_id:d.id,user_id:S.me,body,created_at:new Date().toISOString()};
+  S.busy=true;render();
+  const {error}=await sb.from('round_comments').insert({id:c.id,round_id:c.round_id,user_id:c.user_id,body});
+  S.busy=false;
+  if(error){fail(error,'Couldn’t post the comment.');return render()}
+  (S.comments[d.id]=S.comments[d.id]||[]).push(c);$('#cbody').value='';return render();
+ }
  if(d.tfilter){S.tripsFilter=d.tfilter;return render()}
  if(d.ttab){S.tripTabs[S.arg]=d.ttab;S.confirm=null;S.receiptView=null;return render()}
  if(d.expaid){S.exPaidBy=d.expaid;return render()}
@@ -1130,7 +1220,7 @@ document.addEventListener('input',e=>{if(e.target.id==='rating'||e.target.id==='
 document.addEventListener('keydown',e=>{
  if(e.key!=='Enter')return;
  const auth=S.authStep==='signup'?'signup':'signin';
- const map={email:auth,pw:auth,pw2:auth,handle:'join',fsearch:'search',newname:'savename'};
+ const map={email:auth,pw:auth,pw2:auth,handle:'join',fsearch:'search',newname:'savename',cbody:'postcomment'};
  const act=map[e.target.id];if(act){e.preventDefault();const b=document.querySelector(`[data-act="${act}"]`);if(b)b.click()}
 });
 

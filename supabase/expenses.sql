@@ -42,7 +42,7 @@ on conflict (id) do update set public = false, file_size_limit = excluded.file_s
 
 -- The trip id from a receipt's path, or null if the path isn't shaped right.
 create or replace function private.receipt_trip(path text)
-returns uuid language sql immutable as $$
+returns uuid language sql immutable set search_path = '' as $$
   select case when split_part(path, '/', 1) ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
     then split_part(path, '/', 1)::uuid end;
 $$;
