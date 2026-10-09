@@ -330,7 +330,7 @@ function roundItem(r,showWho=true){
   ${showWho?av(r.uid):''}
   <div class="mid"><b>${showWho?esc(r.uid===S.me?'You':handle(r.uid))+' · ':''}${esc(r.course)}</b>
   <span>${fmtDate(r.date)}${r.n===9?' · 9 holes':''}${r.tee?' · '+esc(r.tee):''}</span>
-  <div class="tags"><span class="tag ${r.t5>=Math.round(r.n/2)?'red':''}">Tiger 5 misses ${r.t5}</span>${r.diff!=null?`<span class="tag gold">Diff ${fmtDiff(r.diff)}</span>`:''}${r.pending?'<span class="tag red">Waiting to post</span>':''}</div></div>
+  <div class="tags">${r.t5>3?'<span class="tag poo" role="img" aria-label="Poo round: more than 3 Tiger 5 misses" title="More than 3 Tiger 5 misses">💩</span>':''}<span class="tag ${r.t5>=Math.round(r.n/2)?'red':''}">Tiger 5 misses ${r.t5}</span>${r.diff!=null?`<span class="tag gold">Diff ${fmtDiff(r.diff)}</span>`:''}${r.pending?'<span class="tag red">Waiting to post</span>':''}</div></div>
   <div class="score"><b>${r.score}</b><span>${r.complete?rel(r.score-r.parPlayed):r.holesPlayed+' holes'}</span></div></button>`;
 }
 function feedView(){
