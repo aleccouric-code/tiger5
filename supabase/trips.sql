@@ -90,7 +90,7 @@ drop policy if exists "trips delete" on public.trips;
 create policy "trips delete" on public.trips for delete to authenticated
   using (created_by = auth.uid());
 
--- Members: visible to the trip; the creator adds themself and their friends;
+-- Members: visible to the trip; anyone on the trip adds their own friends;
 -- anyone can leave, and the creator can remove people.
 drop policy if exists "trip members read" on public.trip_members;
 create policy "trip members read" on public.trip_members for select to authenticated
@@ -98,8 +98,11 @@ create policy "trip members read" on public.trip_members for select to authentic
 drop policy if exists "trip members add" on public.trip_members;
 create policy "trip members add" on public.trip_members for insert to authenticated
   with check (
-    private.is_trip_owner(trip_id, auth.uid())
-    and (user_id = auth.uid() or private.are_friends(auth.uid(), user_id))
+    -- the organizer adds themself when creating the trip
+    (user_id = auth.uid() and private.is_trip_owner(trip_id, auth.uid()))
+    -- anyone on the trip (or the organizer) adds one of their own friends
+    or ((private.is_trip_member(trip_id, auth.uid()) or private.is_trip_owner(trip_id, auth.uid()))
+        and private.are_friends(auth.uid(), user_id))
   );
 drop policy if exists "trip members remove" on public.trip_members;
 create policy "trip members remove" on public.trip_members for delete to authenticated

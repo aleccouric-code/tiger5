@@ -88,6 +88,27 @@ $$;
 revoke all on function public.find_player(text) from public, anon;
 grant execute on function public.find_player(text) to authenticated;
 
+-- Find players by part of their name (3+ characters), their exact email,
+-- or their friend code. Returns only id and name; emails are never returned.
+create or replace function public.search_players(q text)
+returns table (id uuid, handle text)
+language sql stable security definer set search_path = public as $$
+  with s as (select trim(coalesce(q, '')) as t)
+  select p.id, p.handle
+  from public.profiles p, s
+  where auth.uid() is not null
+    and p.id <> auth.uid()
+    and (
+      (length(s.t) >= 3 and p.handle ilike '%' || replace(replace(replace(s.t, '\', '\\'), '%', '\%'), '_', '\_') || '%')
+      or p.friend_code = upper(s.t)
+      or exists (select 1 from auth.users u where u.id = p.id and lower(u.email) = lower(s.t))
+    )
+  order by p.handle
+  limit 10;
+$$;
+revoke all on function public.search_players(text) from public, anon;
+grant execute on function public.search_players(text) to authenticated;
+
 -- Row level security ---------------------------------------------------------
 alter table public.profiles    enable row level security;
 alter table public.friendships enable row level security;

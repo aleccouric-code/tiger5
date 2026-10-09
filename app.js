@@ -147,6 +147,7 @@ async function loadAll(){
   if(others.length){const {data:ps,error}=await sb.from('profiles').select('id,handle').in('id',others);if(error)throw error;(ps||[]).forEach(p=>profiles[p.id]=p)}
   const ids=[S.me,...new Set(S.friendships.filter(f=>f.status==='accepted').map(other))];
   const tripMates=await loadTrips(profiles,ids);
+  (S.searchResults||[]).forEach(p=>{if(!profiles[p.id])profiles[p.id]={id:p.id,handle:p.handle}});
   S.profiles=profiles;
   const {data:rs,error:e3}=await sb.from('rounds').select('*').in('user_id',ids).order('date',{ascending:false}).order('created_at',{ascending:false}).limit(1000);if(e3)throw e3;
   const rounds={};ids.forEach(i=>rounds[i]=[]);(rs||[]).forEach(r=>{const x=fromRow(r);(rounds[x.uid]=rounds[x.uid]||[]).push(x)});
@@ -319,14 +320,40 @@ function feedView(){
  return h;
 }
 
+function searchResults(){
+ const r=S.searchResults;if(!r)return '';
+ if(!r.length)return `<p class="hint">No players found. Names need at least 3 letters; emails must be the full address. If they haven’t joined yet, send them your invite link.</p>`;
+ const inc=incoming(),out=outgoing();
+ return r.map(p=>{
+  const action=isFriend(p.id)?`<span class="tag">Friends</span>`:out.includes(p.id)?`<span class="tag gold">Requested</span>`
+   :inc.includes(p.id)?`<button class="primary" data-act="accept" data-id="${esc(p.id)}">Accept</button>`
+   :`<button class="primary" data-act="add" data-id="${esc(p.id)}">Add</button>`;
+  return `<div class="item" style="padding:8px 0;border-top:1px solid var(--line)">${av(p.id)}<div class="mid"><b>${esc(p.handle)}</b></div>${action}</div>`;
+ }).join('');
+}
+async function searchPlayers(){
+ const q=$('#fsearch').value.trim();
+ if(!q)return toast('Type a name, email or friend code.');
+ if(q.length<3&&!q.includes('@'))return toast('Type at least 3 letters of their name.');
+ if(q.toUpperCase()===me().friend_code)return toast('That’s your own code.');
+ S.searching=true;render();
+ const {data,error}=await sb.rpc('search_players',{q});
+ S.searching=false;
+ if(error){fail(error,'Search didn’t work.');return render()}
+ (data||[]).forEach(p=>{if(!S.profiles[p.id])S.profiles[p.id]={id:p.id,handle:p.handle}});
+ S.searchResults=data||[];render();
+}
 function friendsView(){
  let h=header('Friends');
  const inc=incoming(),out=outgoing(),fr=friendIds();
  if(S.invite)h+=`<div class="card note item">${av(S.invite.id)}<div class="mid"><b>${esc(S.invite.handle)}</b><span>Invited you to be friends</span></div><button class="primary" data-act="addinvite">Add</button><button class="link" data-act="dropinvite">Not now</button></div>`;
  if(inc.length){h+=`<h2>Requests</h2>`;inc.forEach(id=>h+=`<div class="card item">${av(id)}<div class="mid"><b>${esc(handle(id))}</b><span>Wants to share scores with you</span></div><button class="primary" data-act="accept" data-id="${esc(id)}">Accept</button><button class="link" data-act="unfriend" data-id="${esc(id)}">Ignore</button></div>`)}
- h+=`<h2>Invite friends</h2><div class="card"><p style="margin-top:0">Send your invite link, or have friends enter your code on their Friends page.</p>
-  <div class="row"><span class="code">${esc(me().friend_code||'——')}</span><button class="primary" data-act="share">Share invite link</button></div>
-  <label for="fcode">Add a friend by code</label><div class="row"><input id="fcode" maxlength="12" autocapitalize="characters" placeholder="ABC123"><button style="flex:none" data-act="addcode">Add</button></div></div>`;
+ h+=`<h2>Find friends</h2><div class="card">
+  <label for="fsearch" style="margin-top:0">Search by name, email or friend code</label>
+  <div class="row"><input id="fsearch" type="search" maxlength="100" autocapitalize="none" autocomplete="off" placeholder="e.g. Jonathan or jon@example.com"><button style="flex:none" data-act="search" ${S.searching?'disabled':''}>${S.searching?'Searching…':'Search'}</button></div>
+  ${searchResults()}</div>`;
+ h+=`<h2>Invite friends</h2><div class="card"><p style="margin-top:0">Not using the app yet? Send your invite link. Friends can also search for your code.</p>
+  <div class="row"><span class="code">${esc(me().friend_code||'——')}</span><button class="primary" data-act="share">Share invite link</button></div></div>`;
  h+=`<h2>Handicap standings</h2>`;
  const st=[S.me,...fr].map(id=>({id,h:hcp(S.rounds[id]),n:(S.rounds[id]||[]).length})).sort((a,b)=>(a.h.index==null)-(b.h.index==null)||(a.h.index||0)-(b.h.index||0));
  h+=`<div class="card"><table><thead><tr><th>Player</th><th class="n">Rounds</th><th class="n">Index</th></tr></thead><tbody>${st.map((s,i)=>`<tr><td><button class="link plain" style="color:var(--ink);text-decoration:none;font-weight:600" data-player="${esc(s.id)}">${i+1}. ${esc(s.id===S.me?'You':handle(s.id))}</button></td><td class="n" style="font-weight:400">${s.n}</td><td class="n">${fmtIdx(s.h.index)}</td></tr>`).join('')}</tbody></table>${fr.length?'':`<p class="hint">Add friends to compare handicaps.</p>`}</div>`;
@@ -524,12 +551,13 @@ function tripView(id){
 
  h+=`<h2>Players</h2><div class="card">`;
  h+=mem.map(u=>`<div class="item" style="padding:4px 0"><div class="mid"><b>${esc(who(u))}${u===t.created_by?' <span class="tag">Organizer</span>':''}</b></div>${owner&&u!==S.me?`<button class="link" data-act="rmmember" data-u="${esc(u)}">Remove</button>`:''}</div>`).join('');
- if(owner){
+ {
+  // Anyone on the trip can add their own friends; only the organizer removes others.
   const add=friendIds().filter(f=>!mem.includes(f)),waiting=outgoing();
-  if(add.length)h+=`<label>Add friends</label><div class="pick">${add.map(f=>`<button data-act="addmember" data-u="${esc(f)}">+ ${esc(handle(f))}</button>`).join('')}</div>`;
+  if(add.length)h+=`<label>Add your friends</label><div class="pick">${add.map(f=>`<button data-act="addmember" data-u="${esc(f)}">+ ${esc(handle(f))}</button>`).join('')}</div>`;
   else h+=`<p class="hint">All your friends are on this trip. To add someone else, add them on the Friends tab first; they appear here once they accept.</p>`;
   if(waiting.length)h+=`<p class="hint">Waiting to accept your friend request: ${esc(waiting.map(handle).join(', '))}.</p>`;
- }else h+=`<p class="hint">Only the organizer can add players.</p>`;
+ }
  h+=`</div>`;
  h+=owner?(S.confirm==='deltrip'?`<div class="card note"><p style="margin-top:0">Delete this trip and all its bets? Rounds stay on everyone’s cards.</p><div class="row"><button class="danger" data-act="deltrip">Delete trip</button><button data-act="cancelc">Keep it</button></div></div>`:`<button class="wide" data-act="ask" data-c="deltrip">Delete trip</button>`)
   :(S.confirm==='leave'?`<div class="row"><button class="danger" data-act="leavetrip">Leave trip</button><button data-act="cancelc">Stay</button></div>`:`<button class="wide" data-act="ask" data-c="leave">Leave trip</button>`);
@@ -736,12 +764,8 @@ document.addEventListener('click',async e=>{
   S.editName=false;S.profiles[S.me]={...me(),handle:v};toast('Name saved');return render();
  }
  if(a==='share')return shareInvite();
- if(a==='addcode'){
-  const code=$('#fcode').value.trim().toUpperCase();if(!code)return;
-  if(code===me().friend_code)return toast('That’s your own code.');
-  const p=await findPlayer(code);if(!p)return toast('No player has that code. Check it and try again.');
-  S.profiles[p.id]={id:p.id,handle:p.handle};$('#fcode').value='';return addFriend(p.id);
- }
+ if(a==='search')return searchPlayers();
+ if(a==='add')return addFriend(d.id);
  if(a==='addinvite'){const p=S.invite;S.invite=null;S.profiles[p.id]={id:p.id,handle:p.handle};return addFriend(p.id)}
  if(a==='dropinvite'){S.invite=null;return render()}
  if(a==='accept')return accept(d.id);
@@ -795,7 +819,7 @@ document.addEventListener('input',e=>{if(e.target.id==='rating'||e.target.id==='
 document.addEventListener('keydown',e=>{
  if(e.key!=='Enter')return;
  const auth=S.authStep==='signup'?'signup':'signin';
- const map={email:auth,pw:auth,pw2:auth,handle:'join',fcode:'addcode',newname:'savename'};
+ const map={email:auth,pw:auth,pw2:auth,handle:'join',fsearch:'search',newname:'savename'};
  const act=map[e.target.id];if(act){e.preventDefault();const b=document.querySelector(`[data-act="${act}"]`);if(b)b.click()}
 });
 
