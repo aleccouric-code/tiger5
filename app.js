@@ -524,7 +524,12 @@ function tripView(id){
 
  h+=`<h2>Players</h2><div class="card">`;
  h+=mem.map(u=>`<div class="item" style="padding:4px 0"><div class="mid"><b>${esc(who(u))}${u===t.created_by?' <span class="tag">Organizer</span>':''}</b></div>${owner&&u!==S.me?`<button class="link" data-act="rmmember" data-u="${esc(u)}">Remove</button>`:''}</div>`).join('');
- if(owner){const add=friendIds().filter(f=>!mem.includes(f));if(add.length)h+=`<label>Add friends</label><div class="pick">${add.map(f=>`<button data-act="addmember" data-u="${esc(f)}">+ ${esc(handle(f))}</button>`).join('')}</div>`}
+ if(owner){
+  const add=friendIds().filter(f=>!mem.includes(f)),waiting=outgoing();
+  if(add.length)h+=`<label>Add friends</label><div class="pick">${add.map(f=>`<button data-act="addmember" data-u="${esc(f)}">+ ${esc(handle(f))}</button>`).join('')}</div>`;
+  else h+=`<p class="hint">All your friends are on this trip. To add someone else, add them on the Friends tab first; they appear here once they accept.</p>`;
+  if(waiting.length)h+=`<p class="hint">Waiting to accept your friend request: ${esc(waiting.map(handle).join(', '))}.</p>`;
+ }else h+=`<p class="hint">Only the organizer can add players.</p>`;
  h+=`</div>`;
  h+=owner?(S.confirm==='deltrip'?`<div class="card note"><p style="margin-top:0">Delete this trip and all its bets? Rounds stay on everyone’s cards.</p><div class="row"><button class="danger" data-act="deltrip">Delete trip</button><button data-act="cancelc">Keep it</button></div></div>`:`<button class="wide" data-act="ask" data-c="deltrip">Delete trip</button>`)
   :(S.confirm==='leave'?`<div class="row"><button class="danger" data-act="leavetrip">Leave trip</button><button data-act="cancelc">Stay</button></div>`:`<button class="wide" data-act="ask" data-c="leave">Leave trip</button>`);
