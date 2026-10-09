@@ -128,6 +128,10 @@ td.n,th.n{text-align:right;font-weight:800}
 .overlay{position:fixed;inset:0;z-index:20;background:rgba(10,18,14,.92);display:flex;flex-direction:column;gap:12px;padding:calc(12px + env(safe-area-inset-top)) 16px calc(12px + env(safe-area-inset-bottom))}
 .overlay img{flex:1;min-height:0;width:100%;object-fit:contain;border-radius:8px}
 input[type=file]{padding:8px;background:var(--card)}
+.ttabs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:0 0 14px}
+.ttabs button{min-height:44px;padding:6px 4px;border-radius:10px;font-weight:600;font-size:15px;white-space:nowrap}
+.ttabs button[aria-selected=true]{background:var(--green);color:var(--on-green);border-color:var(--green)}
+.ttabs .cnt{display:inline-block;margin-left:5px;font-size:12px;font-weight:800;opacity:.75}
 </style>
 </head>
 <body>

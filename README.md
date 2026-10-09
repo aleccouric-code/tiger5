@@ -38,7 +38,7 @@ Run `supabase/trips.sql` once in the SQL Editor (after `schema.sql`) to turn on 
 
 A trip has dates and players (anyone on the trip can add their friends). Any player can add bets: fewest putts, lowest gross or net, fewest Tiger 5 misses, most birdies, fewest 3-putts, best single round, or a custom bet where you tap the winner. Built-in bets update automatically from finished rounds posted within the trip's dates, either as a trip total or as an average per 18 holes.
 
-Each player puts the stake into each bet's pot and the winners split it. **Settle up** shows each player's net and the fewest payments to square everyone up. The app only keeps track; it never moves money.
+Each player puts the stake into each bet's pot and the winners split it. **Settle up** (at the bottom of the Bets section) shows each player's net and the fewest payments to square everyone up. The app only keeps track; it never moves money.
 
 Trip-mates who aren't friends can see each other's names and the rounds they posted during the trip, nothing else.
 
@@ -47,7 +47,7 @@ Trip-mates who aren't friends can see each other's names and the rounds they pos
 
 On a trip, anyone can add a receipt: what it was for, the total, who paid, who it's split between (everyone by default), and an optional photo or PDF. Photos are shrunk to 1600px JPEGs before upload. Only people on that trip can see its receipts. The person who added a receipt, the person who paid, or the organizer can delete it.
 
-**Settle up** combines bets and receipts: each player's receipt balance is what they paid minus their share, and the payments list squares everything with the fewest transfers.
+A trip page has four buttons: **Bets**, **Receipts**, **Rounds** and **Players**. Bets and receipts settle up separately: **Bets** ends with a bets-only settle-up, and **Receipts** has its own settle-up (what each person paid minus their share). Each lists the fewest payments that square that ledger.
 
 ## Betting Board
 `supabase/board.sql` turns on the **Board** tab (already applied to the live database).

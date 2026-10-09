@@ -112,7 +112,7 @@ function toRow(d,t,index,extra){
 
 /* ---------- state ---------- */
 const DKEY='tiger5-draft-v2',OLDKEY='tiger5-rounds-v1',IMPKEY='tiger5-imported-v1',OUTKEY='tiger5-outbox',CACHEKEY='tiger5-cache',INVKEY='tiger5-invite';
-const S={status:'loading',me:null,email:'',profiles:{},friendships:[],rounds:{},view:'feed',arg:null,busy:false,confirm:null,editName:false,nsel:'18',authStep:'signin',authEmail:'',offline:false,invite:null,trips:[],tripMembers:{},bets:{},tripsOk:true,tripSel:[],betKind:'putts',betScoring:'total',board:[],boardPicks:{},boardOk:true,bbOpts:2,settling:null,expenses:{},exSplit:null,exPaidBy:null,receiptView:null};
+const S={status:'loading',me:null,email:'',profiles:{},friendships:[],rounds:{},view:'feed',arg:null,busy:false,confirm:null,editName:false,nsel:'18',authStep:'signin',authEmail:'',offline:false,invite:null,trips:[],tripMembers:{},bets:{},tripsOk:true,tripSel:[],betKind:'putts',betScoring:'total',tripTabs:{},board:[],boardPicks:{},boardOk:true,bbOpts:2,settling:null,expenses:{},exSplit:null,exPaidBy:null,receiptView:null};
 let draft=LS.get(DKEY,null),hidx=0,playView=draft&&draft.holes?'hole':'start',lastKey='';
 if(draft&&!draft.holes)draft=null;
 const saveDraft=()=>LS.set(DKEY,draft);
@@ -506,15 +506,23 @@ function expenseTotals(t){
  });
  return{paid,share};
 }
-function settleUp(t){
- const mem=S.tripMembers[t.id]||[],net={},betNet={};mem.forEach(u=>{net[u]=0;betNet[u]=0});
+// Bets and receipts settle separately: each returns everyone's net and the
+// fewest payments that square that ledger.
+function settleBets(t){
+ const mem=S.tripMembers[t.id]||[],net={};mem.forEach(u=>net[u]=0);
  (S.bets[t.id]||[]).forEach(b=>{
   const w=betWinners(t,b),stake=+b.stake||0;if(!w.length||!stake)return;
-  mem.forEach(u=>betNet[u]-=stake);
-  const share=stake*mem.length/w.length;w.forEach(u=>betNet[u]+=share);
+  mem.forEach(u=>net[u]-=stake);
+  const share=stake*mem.length/w.length;w.forEach(u=>net[u]+=share);
  });
- const ex=expenseTotals(t),exNet={};
- mem.forEach(u=>{exNet[u]=Math.round((ex.paid[u]-ex.share[u])*100)/100;net[u]=betNet[u]+exNet[u]});
+ return{net,pays:fewestPayments(net)};
+}
+function settleReceipts(t){
+ const mem=S.tripMembers[t.id]||[],ex=expenseTotals(t),net={};
+ mem.forEach(u=>net[u]=Math.round((ex.paid[u]-ex.share[u])*100)/100);
+ return{net,pays:fewestPayments(net)};
+}
+function fewestPayments(net){
  const cred=[],debt=[];
  for(const u in net){const v=Math.round(net[u]*100)/100;if(v>0)cred.push({u,v});else if(v<0)debt.push({u,v:-v})}
  cred.sort((a,b)=>b.v-a.v);debt.sort((a,b)=>b.v-a.v);
@@ -524,7 +532,7 @@ function settleUp(t){
   if(x>=0.01)pays.push({from:debt[i].u,to:cred[j].u,amt:Math.round(x*100)/100});
   debt[i].v-=x;cred[j].v-=x;if(debt[i].v<0.005)i++;if(cred[j].v<0.005)j++;
  }
- return{net,pays,betNet,exNet};
+ return pays;
 }
 
 function tripsView(){
@@ -554,9 +562,13 @@ function tripView(id){
  const mem=S.tripMembers[t.id]||[],owner=t.created_by===S.me,st=tripStatus(t),bets=S.bets[t.id]||[];
  const who=(u)=>u===S.me?'You':handle(u);
  let h=header(t.name,fmtRange(t));
- h+=`<div class="tags" style="margin:-4px 0 4px">${mem.map(u=>`<span class="tag">${esc(who(u))}</span>`).join('')}</div>`;
+ // One section at a time, picked from a row of buttons (remembered per trip).
+ const tab=S.tripTabs[t.id]||'bets',exN=(S.expenses[t.id]||[]).length;
+ const rs=mem.flatMap(u=>tripRounds(t,u)).sort((a,b)=>b.date.localeCompare(a.date)||(b.at||0)-(a.at||0));
+ const tabs=[['bets','Bets',bets.length],['receipts','Receipts',exN],['rounds','Rounds',rs.length],['players','Players',mem.length]];
+ h+=`<div class="ttabs" role="tablist" aria-label="Trip sections">${tabs.map(([k,l,n])=>`<button role="tab" data-ttab="${k}" aria-selected="${tab===k}">${l}${n?`<span class="cnt">${n}</span>`:''}</button>`).join('')}</div>`;
 
- h+=`<h2>Bets</h2>`;
+ if(tab==='bets'){
  if(!bets.length)h+=`<div class="card empty"><b>No bets yet</b>Add one below. Leaderboards fill in from finished rounds posted ${fmtRange(t)}.</div>`;
  bets.forEach(b=>{
   const k=BET_KINDS[b.kind]||BET_KINDS.custom,stake=+b.stake||0;
@@ -584,24 +596,17 @@ function tripView(id){
  ${k.single||k.manual?'':`<label>Scoring</label><div class="seg">${[['total','Trip total'],['avg','Average per 18']].map(([v,l])=>`<button data-bs="${v}" aria-pressed="${S.betScoring===v}">${l}</button>`).join('')}</div>`}
  <label for="bstake">Stake per player ($)</label><input id="bstake" inputmode="decimal" placeholder="0 for bragging rights">
  <button class="primary wide" style="margin-top:14px" data-act="addbet" ${S.busy?'disabled':''}>Add bet</button></div>`;
-
- h+=expensesSection(t,mem,who);
-
- const hasMoney=bets.some(b=>+b.stake>0),hasEx=(S.expenses[t.id]||[]).length>0;
- if(hasMoney||hasEx){
-  const sv=settleUp(t),sgn=(v)=>`<span class="${v>0?'pos':v<0?'neg':''}">${v>0?'+':v<0?'−':''}${fmtMoney(v)}</span>`;
-  h+=`<h2>${st==='done'?'Settle up':'Settle up if the trip ended now'}</h2><div class="card">`;
-  h+=sv.pays.length?`<table><tbody>${sv.pays.map(p=>`<tr><td>${esc(who(p.from))} pay${p.from===S.me?'':'s'} ${esc(p.to===S.me?'you':handle(p.to))}</td><td class="n">${fmtMoney(p.amt)}</td></tr>`).join('')}</tbody></table>`:`<p style="margin:0">Nobody owes anything yet.</p>`;
-  h+=`<h3 style="font-size:15px;margin:14px 0 2px">Where it comes from</h3><table><thead><tr><th>Player</th>${hasMoney?'<th class="n">Bets</th>':''}${hasEx?'<th class="n">Receipts</th>':''}<th class="n">Net</th></tr></thead><tbody>${mem.map(u=>{
-   const r=(v)=>Math.round((v||0)*100)/100;
-   return `<tr><td>${esc(who(u))}</td>${hasMoney?`<td class="n" style="font-weight:400">${sgn(r(sv.betNet[u]))}</td>`:''}${hasEx?`<td class="n" style="font-weight:400">${sgn(r(sv.exNet[u]))}</td>`:''}<td class="n">${sgn(r(sv.net[u]))}</td></tr>`}).join('')}</tbody></table>
-  <p class="hint">Receipts: what you paid minus your share. Payments above combine everything into the fewest transfers. The app only keeps track; settle up however your group pays each other.</p></div>`;
  }
 
- const rs=mem.flatMap(u=>tripRounds(t,u)).sort((a,b)=>b.date.localeCompare(a.date)||(b.at||0)-(a.at||0));
- h+=`<h2>Trip rounds</h2>`+(rs.length?rs.map(r=>roundItem(r)).join(''):`<div class="card empty"><b>No rounds yet</b>Finished rounds posted ${fmtRange(t)} show up here.</div>`);
+ if(tab==='receipts')h+=expensesSection(t,mem,who);
 
- h+=`<h2>Players</h2><div class="card">`;
+ // Bets settle up at the bottom of Bets; receipts have their own under Receipts.
+ if(tab==='bets'&&bets.some(b=>+b.stake>0))h+=settleCard(t,settleBets(t),st==='done'?'Settle up bets':'Settle up bets if the trip ended now','Bets only. Receipts settle up separately under Receipts.');
+
+ if(tab==='rounds')h+=rs.length?rs.map(r=>roundItem(r)).join(''):`<div class="card empty"><b>No rounds yet</b>Finished rounds posted ${fmtRange(t)} show up here.</div>`;
+
+ if(tab==='players'){
+ h+=`<div class="card">`;
  h+=mem.map(u=>`<div class="item" style="padding:6px 0">${av(u)}<div class="mid"><b>${esc(who(u))}</b>${u===t.created_by?'<span>Organizer</span>':''}</div>${friendAction(u,'Add friend')}${owner&&u!==S.me?`<button class="link" data-act="rmmember" data-u="${esc(u)}">Remove</button>`:''}</div>`).join('');
  if(mem.some(u=>u!==S.me&&!isFriend(u)))h+=`<p class="hint">Friends see each other’s rounds all year, not just on this trip.</p>`;
  {
@@ -614,14 +619,24 @@ function tripView(id){
  h+=`</div>`;
  h+=owner?(S.confirm==='deltrip'?`<div class="card note"><p style="margin-top:0">Delete this trip and all its bets? Rounds stay on everyone’s cards.</p><div class="row"><button class="danger" data-act="deltrip">Delete trip</button><button data-act="cancelc">Keep it</button></div></div>`:`<button class="wide" data-act="ask" data-c="deltrip">Delete trip</button>`)
   :(S.confirm==='leave'?`<div class="row"><button class="danger" data-act="leavetrip">Leave trip</button><button data-act="cancelc">Stay</button></div>`:`<button class="wide" data-act="ask" data-c="leave">Leave trip</button>`);
+ }
  return h;
 }
 
+function settleCard(t,sv,title,note){
+ const mem=S.tripMembers[t.id]||[],who=(u)=>u===S.me?'You':handle(u);
+ const sgn=(v)=>{v=Math.round((v||0)*100)/100;return `<span class="${v>0?'pos':v<0?'neg':''}">${v>0?'+':v<0?'−':''}${fmtMoney(v)}</span>`};
+ return `<h2>${esc(title)}</h2><div class="card">`
+  +(sv.pays.length?`<table><tbody>${sv.pays.map(p=>`<tr><td>${esc(who(p.from))} pay${p.from===S.me?'':'s'} ${esc(p.to===S.me?'you':handle(p.to))}</td><td class="n">${fmtMoney(p.amt)}</td></tr>`).join('')}</tbody></table>`:`<p style="margin:0">Nobody owes anything yet.</p>`)
+  +`<p class="hint">Net: ${mem.map(u=>`${esc(who(u))} ${sgn(sv.net[u])}`).join(' · ')}</p><p class="hint">${esc(note)} The app only keeps track; settle up however your group pays each other.</p></div>`;
+}
 function expensesSection(t,mem,who){
  const list=S.expenses[t.id]||[],ex=expenseTotals(t),total=list.reduce((a,e)=>a+e.amount,0);
- let h=`<h2>Receipts</h2>`;
+ let h='';
  if(list.length){
   h+=`<div class="card"><div class="bet-head"><b>Trip spending</b><span class="money">${fmtMoney(total)}</span></div><table style="margin-top:6px"><thead><tr><th>Player</th><th class="n">Paid</th><th class="n">Their share</th></tr></thead><tbody>${mem.map(u=>`<tr><td>${esc(who(u))}</td><td class="n" style="font-weight:400">${fmtMoney(ex.paid[u]||0)}</td><td class="n">${fmtMoney(ex.share[u]||0)}</td></tr>`).join('')}</tbody></table></div>`;
+  h+=settleCard(t,settleReceipts(t),'Settle up receipts','Receipts only: what each person paid minus their share.');
+  h+=`<h2>All receipts</h2>`;
   list.forEach(e=>{
    const split=(e.split_among||[]).filter(u=>mem.includes(u)),canDel=e.created_by===S.me||e.paid_by===S.me||t.created_by===S.me;
    const each=split.length?fmtMoney(e.amount/split.length):'';
@@ -945,6 +960,7 @@ document.addEventListener('click',async e=>{
  if(d.bs){S.betScoring=d.bs;return render()}
  if(d.win)return toggleWinner(d.win,d.u);
  if(d.pickbet)return pickBoard(d.pickbet,+d.opt);
+ if(d.ttab){S.tripTabs[S.arg]=d.ttab;S.confirm=null;S.receiptView=null;return render()}
  if(d.expaid){S.exPaidBy=d.expaid;return render()}
  if(d.exsplit){const t=curTrip(),mem=t?S.tripMembers[t.id]||[]:[];const s=new Set(S.exSplit||mem);s.has(d.exsplit)?s.delete(d.exsplit):s.add(d.exsplit);S.exSplit=mem.filter(u=>s.has(u));return render()}
  if(d.player)return go('player',d.player);
