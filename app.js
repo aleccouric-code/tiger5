@@ -105,7 +105,7 @@ const CFG=window.TIGER5_CONFIG||{};
 const configured=!!(CFG.supabaseUrl&&CFG.supabaseAnonKey&&!/YOUR-/.test(CFG.supabaseUrl+CFG.supabaseAnonKey));
 const sb=configured&&window.supabase?window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseAnonKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}}):null;
 
-const fromRow=(r)=>({id:r.id,uid:r.user_id,course:r.course,tee:r.tee,rating:r.rating==null?null:+r.rating,slope:r.slope,date:r.date,nine:r.nine,holes:r.holes||[],n:r.n,par:r.par,parPlayed:r.par_played,score:r.score,putts:r.putts,per:r.per||{},t5:r.t5,ch:r.ch,ags:r.ags,diff:r.diff==null?null:+r.diff,complete:r.complete,net:r.net,holesPlayed:r.holes_played,at:Date.parse(r.created_at)||0,pending:!!r._pending});
+const fromRow=(r)=>({id:r.id,uid:r.user_id,course:r.course,tee:r.tee,rating:r.rating==null?null:+r.rating,slope:r.slope,date:r.date,nine:r.nine,holes:r.holes||[],n:r.n,par:r.par,parPlayed:r.par_played,score:r.score,putts:r.putts,per:r.per||{},t5:r.t5,ch:r.ch,ags:r.ags,diff:r.diff==null?null:+r.diff,complete:r.complete,net:r.net,holesPlayed:r.holes_played,at:Date.parse(r.created_at)||0,pending:!!r._pending,enteredBy:r.entered_by||null,scorecards:r.scorecards||[]});
 function toRow(d,t,index,extra){
  return{id:d.id,user_id:S.me,course:d.course,tee:d.tee||null,rating:+d.rating||null,slope:+d.slope||null,date:d.date,nine:d.nine||null,holes:d.holes,
   n:t.n,par:t.par,par_played:t.parPlayed,score:t.score,putts:t.putts,per:t.per,t5:t.t5,ch:t.ch,ags:t.ags,diff:t.diff,complete:t.complete,net:t.net,holes_played:t.holesPlayed,index_at_post:index,...(extra||{})};
@@ -113,7 +113,7 @@ function toRow(d,t,index,extra){
 
 /* ---------- state ---------- */
 const DKEY='tiger5-draft-v2',OLDKEY='tiger5-rounds-v1',IMPKEY='tiger5-imported-v1',OUTKEY='tiger5-outbox',CACHEKEY='tiger5-cache',INVKEY='tiger5-invite';
-const S={status:'loading',me:null,email:'',profiles:{},friendships:[],rounds:{},view:'feed',arg:null,busy:false,confirm:null,editName:false,nsel:'18',authStep:'signin',authEmail:'',offline:false,invite:null,trips:[],tripMembers:{},bets:{},tripsOk:true,tripSel:[],betKind:'putts',betScoring:'total',tripTabs:{},board:[],boardPicks:{},boardOk:true,bbOpts:2,settling:null,expenses:{},exSplit:null,exPaidBy:null,receiptView:null,likes:{},comments:{},attests:{}};
+const S={status:'loading',me:null,email:'',profiles:{},friendships:[],rounds:{},view:'feed',arg:null,busy:false,confirm:null,editName:false,nsel:'18',authStep:'signin',authEmail:'',offline:false,invite:null,trips:[],tripMembers:{},bets:{},tripsOk:true,tripSel:[],betKind:'putts',betScoring:'total',tripTabs:{},board:[],boardPicks:{},boardOk:true,bbOpts:2,settling:null,expenses:{},exSplit:null,exPaidBy:null,receiptView:null,likes:{},comments:{},attests:{},venmo:{},photoView:null};
 let draft=LS.get(DKEY,null),hidx=0,playView=draft&&draft.holes?'hole':'start',lastKey='';
 if(draft&&!draft.holes)draft=null;
 const saveDraft=()=>LS.set(DKEY,draft);
@@ -160,6 +160,7 @@ async function loadAll(){
   }
   S.rounds=rounds;addPendingLocal();
   await loadSocial(rounds);
+  try{const {data:vp,error:ve}=await sb.from('profile_private').select('id,venmo');if(!ve){S.venmo={};(vp||[]).forEach(v=>{if(v.venmo)S.venmo[v.id]=v.venmo})}}catch(e){}
   S.status='ready';S.offline=false;cacheSave();
   render();
   flushOutbox();checkInvite();
@@ -239,8 +240,8 @@ async function loadBoard(profiles){
  }
 }
 function addPendingLocal(){
- const mine=S.rounds[S.me]=S.rounds[S.me]||[];
- LS.get(OUTKEY,[]).forEach(row=>{if(!mine.some(r=>r.id===row.id))mine.unshift(fromRow({...row,created_at:new Date().toISOString(),_pending:true}))});
+ // Rounds waiting to post (yours, and friends' you scored) show on the right player's card.
+ LS.get(OUTKEY,[]).forEach(row=>{const u=row.user_id||S.me,list=S.rounds[u]=S.rounds[u]||[];if(!list.some(r=>r.id===row.id))list.unshift(fromRow({...row,created_at:new Date().toISOString(),_pending:true}))});
 }
 let flushing=false;
 async function flushOutbox(){
@@ -291,6 +292,7 @@ function render(){
  else if(S.status!=='ready')html=header('Can’t connect')+offlineView();
  else if(S.view==='friends')html=friendsView();
  else if(S.view==='board')html=boardView();
+ else if(S.view==='leaders')html=leadersView();
  else if(S.view==='newbet')html=newBetView();
  else if(S.view==='trips')html=tripsView();
  else if(S.view==='newtrip')html=newTripView();
@@ -306,13 +308,24 @@ function render(){
  lastKey=key;
  renderTabs();
 }
+// Bottom bar icons (simple line drawings that follow the text color).
+const ico=(d)=>`<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const TAB_ICONS={
+ feed:ico('<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 9h8M8 13h8M8 17h5"/>'),
+ play:ico('<path d="M7 21V3l11 4.5L7 12"/><ellipse cx="10" cy="21" rx="6" ry="1.5"/>'),
+ trips:ico('<rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 13h18"/>'),
+ board:ico('<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M12 8.5v7M14.2 10.2c-.4-.8-1.2-1.2-2.2-1.2-1.3 0-2.2.7-2.2 1.6 0 2.2 4.6 1 4.6 3.2 0 .9-1 1.7-2.4 1.7-1.1 0-2-.5-2.4-1.3"/>'),
+ leaders:ico('<path d="M8 4h8v5a4 4 0 0 1-8 0V4ZM8 6H5v1.5A3.5 3.5 0 0 0 8.5 11M16 6h3v1.5a3.5 3.5 0 0 1-3.5 3.5M12 13v4M8.5 20h7M10 17h4"/>'),
+ friends:ico('<circle cx="9" cy="8.5" r="3.2"/><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"/><circle cx="16.5" cy="9.5" r="2.6"/><path d="M16 14.2c2.4.2 4 1.8 4.5 4.3"/>'),
+ me:ico('<circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20.5c.8-4 3.8-6.2 7.5-6.2s6.7 2.2 7.5 6.2"/>')
+};
 function renderTabs(){
  const hide=S.status==='auth'||S.status==='setup';
  const ready=S.status==='ready';
  const badges={friends:ready?incoming().length:0,board:ready?S.board.filter(needsMyPick).length:0};
  const cur=S.view==='player'&&(S.arg||S.me)===S.me?'me':(S.view==='trip'||S.view==='newtrip')?'trips':S.view==='newbet'?'board':(S.view==='round'||S.view==='player')?'':S.view;
- const t=[['feed','Feed'],['play',draft?'Round':'Play'],['trips','Trips'],['board','Board'],['friends','Friends'],['me','Me']];
- $('#tabs').innerHTML=hide?'':`<div>${t.map(([k,l])=>`<button data-nav="${k}" ${cur===k?'aria-current="page"':''}>${l}${badges[k]?`<span class="badge">${badges[k]}</span>`:''}</button>`).join('')}</div>`;
+ const t=[['feed','Feed'],['play',draft?'Round':'Play'],['trips','Trips'],['board','Board'],['leaders','Leaders'],['friends','Friends'],['me','Me']];
+ $('#tabs').innerHTML=hide?'':`<div>${t.map(([k,l])=>`<button data-nav="${k}" ${cur===k?'aria-current="page"':''}><span class="ti">${TAB_ICONS[k]}</span><span class="tl">${l}</span>${badges[k]?`<span class="badge">${badges[k]}</span>`:''}</button>`).join('')}</div>`;
 }
 // Sandie logo: the splash screen's emblem (gold ring, flag, ball in the bunker).
 const LOGO=`<svg class="logo" viewBox="0 0 168 168" aria-hidden="true"><circle cx="84" cy="84" r="80" fill="none" stroke="#E3B04B" stroke-width="6"/><g transform="translate(32 24)"><line x1="34" y1="10" x2="34" y2="104" stroke="#F3EAD3" stroke-width="5" stroke-linecap="round"/><path d="M36 12 L92 28 L36 46 Z" fill="#E3B04B"/><path d="M8 104 C 14 92, 40 90, 60 94 C 76 97, 94 94, 98 102 C 102 112, 80 116, 54 116 C 28 116, 4 114, 8 104 Z" fill="#E2CF9F"/><circle cx="66" cy="98" r="9" fill="#F3EAD3"/></g></svg>`;
@@ -339,7 +352,7 @@ function offlineView(){
 }
 function authView(){
  const up=S.authStep==='signup';
- return `${header(up?'Create account':'Sign in','Sandie')}
+ return `${header(up?'Create Account':'Sign In','Sandie')}
  <div class="card"><p style="margin-top:0">Track your score, your handicap index and the five mistakes that cost you strokes, and see your friends’ rounds.</p>
  <div class="seg" style="margin-bottom:4px"><button data-act="authmode" data-m="signin" aria-pressed="${!up}">Sign in</button><button data-act="authmode" data-m="signup" aria-pressed="${up}">Create account</button></div>
  <label for="email">Email</label><input id="email" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" value="${esc(S.authEmail)}">
@@ -394,7 +407,7 @@ function feedCard(r){
   <div class="fcourse">${FLAG}<span>${esc(r.course)}</span></div>
   <div class="ftee">${[r.tee?esc(r.tee)+' tees':'',r.n===9?(r.nine==='back'?'Back 9':'Front 9'):''].filter(Boolean).join(' · ')}</div>
   <div class="rings">${rings.map(([l,v,s,c])=>`<div class="ring"><span class="rl">${l}</span><b style="--ring:${c}">${v}</b><small>${s}</small></div>`).join('')}</div>
-  <div class="tags">${rateBadge(r)}${extrasTags(r)}${att.length?`<span class="tag">✋ Attested by ${esc(namesList(att))}</span>`:''}${r.pending?'<span class="tag red">Waiting to post</span>':''}</div>
+  <div class="tags">${rateBadge(r)}${extrasTags(r)}${att.length?`<span class="tag">✋ Attested by ${esc(namesList(att))}</span>`:''}${r.enteredBy&&r.enteredBy!==r.uid?`<span class="tag">✍️ Scored by ${esc(r.enteredBy===S.me?'you':handle(r.enteredBy))}</span>`:''}${r.pending?'<span class="tag red">Waiting to post</span>':''}</div>
  </button>
  ${r.pending?'':`<div class="factions">
   <button data-like="${esc(r.id)}" aria-pressed="${likes.includes(S.me)}">👍 <span>${likes.length?likes.length+' ':''}Like${likes.length===1||!likes.length?'':'s'}</span></button>
@@ -417,6 +430,43 @@ function roundItem(r,showWho=true){
   <div class="tags">${rateBadge(r)}<span class="tag ${r.t5>=Math.round(r.n/2)?'red':''}">Tiger 5 misses ${r.t5}</span>${r.diff!=null?`<span class="tag gold">Diff ${fmtDiff(r.diff)}</span>`:''}${extrasTags(r)}${r.pending?'<span class="tag red">Waiting to post</span>':''}</div></div>
   <div class="score"><b>${r.score}</b><span>${r.complete?rel(r.score-r.parPlayed):r.holesPlayed+' holes'}</span></div></button>`;
 }
+/* ---------- leaderboard ---------- */
+// Every category ranks you and your friends over the chosen period.
+// low:true means the smallest number leads. Values of null mean "not enough rounds".
+const LB_PERIODS=[['all','All Time'],['year','This Year'],['30','Last 30 Days']];
+const per18=(rs,f)=>{const h=rs.reduce((a,r)=>a+r.n,0);return h?Math.round(rs.reduce((a,r)=>a+f(r),0)/h*18*10)/10:null};
+const LB_CATS=[
+ {k:'hcp',label:'Handicap Index',low:true,fmt:fmtIdx,val:(rs,all)=>hcp(all).index,note:'Current index from the last 20 rated rounds (ignores the period filter).'},
+ {k:'avg',label:'Avg Score',low:true,val:rs=>{const f=rs.filter(r=>r.complete&&r.n===18);return f.length?Math.round(f.reduce((a,r)=>a+r.score,0)/f.length*10)/10:null},note:'Average of finished 18-hole rounds.'},
+ {k:'best',label:'Best Round',low:true,val:rs=>{const f=rs.filter(r=>r.complete&&r.n===18);return f.length?Math.min(...f.map(r=>r.score)):null},note:'Lowest finished 18-hole score.'},
+ {k:'t5',label:'Tiger 5 Misses',low:true,fmt:v=>v.toFixed(1),val:rs=>per18(rs.filter(r=>r.complete),r=>r.t5),note:'Tiger 5 misses per 18 holes.'},
+ {k:'putts',label:'Putts',low:true,fmt:v=>v.toFixed(1),val:rs=>per18(rs.filter(r=>r.complete&&r.putts!=null),r=>r.putts),note:'Putts per 18 holes (rounds with putts on every hole).'},
+ {k:'birdies',label:'Birdies',val:rs=>rs.reduce((a,r)=>a+(r.holes||[]).filter(h=>played(h)&&h.score<h.par).length,0),note:'Birdies or better, total.'},
+ {k:'rounds',label:'Rounds Played',val:rs=>rs.length,note:'Rounds posted.'},
+ {k:'trophy',label:'🏆 Trophy Rounds',val:rs=>rs.filter(r=>r.complete&&r.t5<=3).length,note:'Finished rounds with 3 or fewer Tiger 5 misses.'},
+ {k:'poo',label:'💩 Poo Rounds',val:rs=>rs.filter(r=>r.t5>=4).length,note:'Rounds with 4 or more Tiger 5 misses. Wall of shame.'},
+ {k:'beer',label:'🍺 Beers',val:rs=>rs.reduce((a,r)=>a+holeSum(r,'beer'),0),note:'Beers logged on the course.'},
+ {k:'gb',label:'💨 GB',val:rs=>rs.reduce((a,r)=>a+holeSum(r,'gb'),0),note:'GB logged on the course.'},
+ {k:'likes',label:'👍 Likes Received',val:rs=>rs.reduce((a,r)=>a+(S.likes[r.id]||[]).length,0),note:'Likes on posted rounds.'},
+ {k:'attested',label:'✋ Attested Rounds',val:rs=>rs.filter(r=>(S.attests[r.id]||[]).length).length,note:'Rounds a friend vouched for.'}
+];
+function leadersView(){
+ let h=header('Leaderboard');
+ const per=S.lbPeriod||'all',cat=LB_CATS.find(c=>c.k===S.lbCat)||LB_CATS[0];
+ const from=per==='year'?new Date().getFullYear()+'-01-01':per==='30'?isoDate(new Date(Date.now()-30*864e5)):'0000';
+ h+=`<div class="ttabs" role="tablist" aria-label="Period">${LB_PERIODS.map(([k,l])=>`<button role="tab" data-lbper="${k}" aria-selected="${per===k}">${l}</button>`).join('')}</div>`;
+ h+=`<div class="lbcats" role="tablist" aria-label="Category">${LB_CATS.map(c=>`<button role="tab" data-lbcat="${c.k}" aria-selected="${c===cat}">${c.label}</button>`).join('')}</div>`;
+ const rows=[S.me,...friendIds()].map(u=>{const all=S.rounds[u]||[],rs=all.filter(r=>r.date>=from);return{u,v:cat.val(rs,all)}});
+ const ranked=rows.filter(r=>r.v!=null).sort((a,b)=>cat.low?a.v-b.v:b.v-a.v),none=rows.filter(r=>r.v==null);
+ const fmt=cat.fmt||(v=>String(v)),medal=['🥇','🥈','🥉'];
+ let rank=0,prev=null;
+ h+=`<div class="card"><div class="bet-head"><b>${esc(cat.label)}</b><span class="hint" style="margin:0">${esc(LB_PERIODS.find(p=>p[0]===per)[1])}</span></div><p class="hint" style="margin:2px 0 8px">${esc(cat.note)}</p>`;
+ if(!ranked.length)h+=`<p class="hint" style="margin:0 0 4px">Nobody qualifies yet for this period.</p>`;
+ h+=`<table class="lbtable"><tbody>${ranked.map((r,i)=>{if(r.v!==prev){rank=i+1;prev=r.v}return `<tr class="${r.u===S.me?'mine':''}"><td class="lbrank">${rank<=3&&(cat.low||r.v>0)?medal[rank-1]:rank}</td><td><button class="plain namelink" data-player="${esc(r.u)}">${withPic(r.u,r.u===S.me?'You':handle(r.u))}</button></td><td class="n">${esc(fmt(r.v))}</td></tr>`}).join('')}${none.map(r=>`<tr><td class="lbrank">–</td><td style="color:var(--mute)">${withPic(r.u,r.u===S.me?'You':handle(r.u))}</td><td class="n" style="color:var(--mute);font-weight:400">—</td></tr>`).join('')}</tbody></table>`;
+ h+=`</div>`;
+ if(!friendIds().length)h+=`<p class="sub">Add friends to see how you stack up.</p>`;
+ return h;
+}
 function feedView(){
  const rs=allFeedRounds().slice(0,80);
  let h=header('Feed');
@@ -425,8 +475,8 @@ function feedView(){
  const waiting=S.board.filter(needsMyPick).length;
  if(waiting)h+=`<button class="card item note" data-nav="board"><div class="mid"><b>${waiting} bet${waiting>1?'s':''} waiting for your pick</b><span>On the Betting Board</span></div><span class="tag gold">Pick</span></button>`;
  S.trips.filter(t=>tripStatus(t)==='live').forEach(t=>h+=`<button class="card item note" data-trip="${esc(t.id)}"><div class="mid"><b>${esc(t.name)}</b><span>Trip happening now · ${(S.bets[t.id]||[]).length} bets</span></div><span class="tag gold">Leaderboards</span></button>`);
- if(draft)h+=`<button class="card item" data-nav="play"><div class="mid"><b>Round in progress</b><span>${esc(draft.course)}</span></div><span class="tag">Resume</span></button>`;
- if(!rs.length)h+=`<div class="card empty"><b>No posted rounds yet</b>Play a round and post it, or add friends to see theirs here.<div class="row" style="margin-top:14px"><button class="primary" data-nav="play">Start a round</button><button data-nav="friends">Add friends</button></div></div>`;
+ if(draft)h+=`<button class="card item" data-nav="play"><div class="mid"><b>Round in Progress</b><span>${esc(draft.course)}</span></div><span class="tag">Resume</span></button>`;
+ if(!rs.length)h+=`<div class="card empty"><b>No Posted Rounds Yet</b>Play a round and post it, or add friends to see theirs here.<div class="row" style="margin-top:14px"><button class="primary" data-nav="play">Start a round</button><button data-nav="friends">Add friends</button></div></div>`;
  else h+=rs.map(r=>roundItem(r)).join('');
  return h;
 }
@@ -461,17 +511,17 @@ function friendsView(){
  const inc=incoming(),out=outgoing(),fr=friendIds();
  if(S.invite)h+=`<div class="card note item">${av(S.invite.id)}<div class="mid"><b>${esc(S.invite.handle)}</b><span>Invited you to be friends</span></div><button class="primary" data-act="addinvite">Add</button><button class="link" data-act="dropinvite">Not now</button></div>`;
  if(inc.length){h+=`<h2>Requests</h2>`;inc.forEach(id=>h+=`<div class="card item">${av(id)}<div class="mid"><b>${esc(handle(id))}</b><span>Wants to share scores with you</span></div><button class="primary" data-act="accept" data-id="${esc(id)}">Accept</button><button class="link" data-act="unfriend" data-id="${esc(id)}">Ignore</button></div>`)}
- h+=`<h2>Find friends</h2><div class="card">
+ h+=`<h2>Find Friends</h2><div class="card">
   <label for="fsearch" style="margin-top:0">Search by name, email or friend code</label>
   <div class="row"><input id="fsearch" type="search" maxlength="100" autocapitalize="none" autocomplete="off" placeholder="e.g. Jonathan or jon@example.com"><button style="flex:none" data-act="search" ${S.searching?'disabled':''}>${S.searching?'Searching…':'Search'}</button></div>
   ${searchResults()}</div>`;
- h+=`<h2>Invite friends</h2><div class="card"><p style="margin-top:0">Not using the app yet? Send your invite link. Friends can also search for your code.</p>
-  <div class="row"><span class="code">${esc(me().friend_code||'——')}</span><button class="primary" data-act="share">Share invite link</button></div></div>`;
- h+=`<h2>Handicap standings</h2>`;
+ h+=`<h2>Invite Friends</h2><div class="card"><p style="margin-top:0">Not using the app yet? Send your invite link. Friends can also search for your code.</p>
+  <div class="row"><span class="code">${esc(me().friend_code||'——')}</span><button class="primary" data-act="share">Share Invite Link</button></div></div>`;
+ h+=`<h2>Handicap Standings</h2>`;
  const st=[S.me,...fr].map(id=>({id,h:hcp(S.rounds[id]),n:(S.rounds[id]||[]).length})).sort((a,b)=>(a.h.index==null)-(b.h.index==null)||(a.h.index||0)-(b.h.index||0));
  h+=`<div class="card"><table><thead><tr><th>Player</th><th class="n">Rounds</th><th class="n">Index</th></tr></thead><tbody>${st.map((s,i)=>`<tr><td><button class="link plain" style="color:var(--ink);text-decoration:none;font-weight:600" data-player="${esc(s.id)}">${i+1}. ${withPic(s.id,s.id===S.me?'You':handle(s.id))}</button></td><td class="n" style="font-weight:400">${s.n}</td><td class="n">${fmtIdx(s.h.index)}</td></tr>`).join('')}</tbody></table>${fr.length?'':`<p class="hint">Add friends to compare handicaps.</p>`}</div>`;
- if(fr.length){h+=`<h2>Your friends</h2>`;fr.forEach(id=>{const x=hcp(S.rounds[id]);h+=`<div class="card item"><button class="item plain" data-player="${esc(id)}">${av(id)}<div class="mid"><b>${esc(handle(id))}</b><span>Index ${fmtIdx(x.index)} · ${(S.rounds[id]||[]).length} rounds</span></div></button>${S.confirm==='rm:'+id?`<button data-act="unfriend" data-id="${esc(id)}">Remove</button><button class="link" data-act="cancelc">Keep</button>`:`<button class="link" data-act="ask" data-c="rm:${esc(id)}">Remove</button>`}</div>`})}
- if(out.length){h+=`<h2>Waiting on them</h2>`;out.forEach(id=>h+=`<div class="card item">${av(id)}<div class="mid"><b>${esc(handle(id))}</b><span>Request sent</span></div><button class="link" data-act="unfriend" data-id="${esc(id)}">Cancel</button></div>`)}
+ if(fr.length){h+=`<h2>Your Friends</h2>`;fr.forEach(id=>{const x=hcp(S.rounds[id]);h+=`<div class="card item"><button class="item plain" data-player="${esc(id)}">${av(id)}<div class="mid"><b>${esc(handle(id))}</b><span>Index ${fmtIdx(x.index)} · ${(S.rounds[id]||[]).length} rounds</span></div></button>${S.confirm==='rm:'+id?`<button data-act="unfriend" data-id="${esc(id)}">Remove</button><button class="link" data-act="cancelc">Keep</button>`:`<button class="link" data-act="ask" data-c="rm:${esc(id)}">Remove</button>`}</div>`})}
+ if(out.length){h+=`<h2>Waiting on Them</h2>`;out.forEach(id=>h+=`<div class="card item">${av(id)}<div class="mid"><b>${esc(handle(id))}</b><span>Request sent</span></div><button class="link" data-act="unfriend" data-id="${esc(id)}">Cancel</button></div>`)}
  return h;
 }
 
@@ -488,42 +538,48 @@ function diffChart(x){
 }
 function playerView(id){
  const mineView=id===S.me;
- if(!mineView&&!isFriend(id))return header(handle(id),'Player')+`<div class="card empty"><b>Scores are shared between friends</b>Add ${esc(handle(id))} as a friend to see all their rounds.<div style="margin-top:14px">${friendAction(id,'Add friend')}</div></div>`;
+ if(!mineView&&!isFriend(id))return header(handle(id),'Player')+`<div class="card empty"><b>Scores Are Shared Between Friends</b>Add ${esc(handle(id))} as a friend to see all their rounds.<div style="margin-top:14px">${friendAction(id,'Add Friend')}</div></div>`;
  const rounds=S.rounds[id]||[],x=hcp(rounds);
- let h=header(mineView?'Your card':handle(id),mineView?'Sandie':'Friend');
+ let h=header(mineView?'Your Card':handle(id),mineView?'Sandie':'Friend');
  if(mineView){
   h+=S.editName?`<div class="card"><label for="newname">Your name in the app</label><input id="newname" maxlength="30" value="${esc(me().handle||'')}"><div class="row" style="margin-top:10px"><button class="primary" data-act="savename">Save</button><button data-act="cancelname">Cancel</button></div></div>`
-   :`<p class="sub">Playing as <b>${esc(me().handle||'')}</b> · <button class="link" data-act="editname">Change name</button> · <button class="link" data-act="signout">Sign out</button></p>`;
+   :`<p class="sub">Playing as <b>${esc(me().handle||'')}</b> · <button class="link" data-act="editname">Change Name</button> · <button class="link" data-act="signout">Sign Out</button></p>`;
  }
  // Profile photo: big circle; on your own card, buttons to add, change or remove it.
- h+=`<div class="phead">${av(id,'lg')}${mineView?`<div><label class="filebtn" for="avfile">${S.busy==='photo'?'Uploading…':photoOf(id)?'Change photo':'Add a photo'}</label><input id="avfile" type="file" accept="image/*" hidden>${photoOf(id)?`<button class="link" data-act="rmphoto">Remove photo</button>`:''}<p class="hint" style="margin:6px 0 0">Shows next to your name for your friends.</p></div>`:`<div><p class="hint" style="margin:0">${(S.rounds[id]||[]).length} rounds posted</p></div>`}</div>`;
+ h+=`<div class="phead">${photoOf(id)?`<button class="plain photobtn" data-viewphoto="${esc(id)}" aria-label="View ${esc(mineView?'your':handle(id)+'’s')} photo full size">${av(id,'lg')}</button>`:av(id,'lg')}${mineView?`<div><label class="filebtn" for="avfile">${S.busy==='photo'?'Uploading…':photoOf(id)?'Change Photo':'Add a Photo'}</label><input id="avfile" type="file" accept="image/*" hidden>${photoOf(id)?`<button class="link" data-act="rmphoto">Remove Photo</button>`:''}<p class="hint" style="margin:6px 0 0">Shows next to your name for your friends.</p></div>`:`<div><p class="hint" style="margin:0">${(S.rounds[id]||[]).length} rounds posted</p>${venmoLink(id)?`<p style="margin:6px 0 0">${venmoLink(id)}</p>`:''}</div>`}</div>`;
+ // Venmo handle: only you and your friends can see it.
+ if(mineView)h+=`<div class="card"><label for="venmo" style="margin-top:0">Venmo Username</label><div class="row"><span style="flex:none;font-weight:700;color:var(--mute)">@</span><input id="venmo" maxlength="30" autocapitalize="none" autocomplete="off" placeholder="your-venmo" value="${esc((S.venmo||{})[S.me]||'')}"><button style="flex:none" data-act="savevenmo">Save</button></div><p class="hint">Only your friends can see this. It shows on your profile and next to what people owe you.</p></div>`;
  const complete=rounds.filter(r=>r.complete),holes=complete.reduce((a,r)=>a+r.n,0);
  const t5per18=holes?complete.reduce((a,r)=>a+r.t5,0)/holes*18:null;
  const f18=complete.filter(r=>r.n===18);
- h+=`<div class="card big"><div><b>${fmtIdx(x.index)}</b><span>Handicap index</span></div><div><b>${f18.length?Math.round(f18.reduce((a,r)=>a+r.score,0)/f18.length):'—'}</b><span>Avg 18-hole score</span></div><div><b>${t5per18==null?'—':t5per18.toFixed(1)}</b><span>Tiger 5 misses per 18</span></div></div>`;
+ h+=`<div class="card big"><div><b>${fmtIdx(x.index)}</b><span>Handicap Index</span></div><div><b>${f18.length?Math.round(f18.reduce((a,r)=>a+r.score,0)/f18.length):'—'}</b><span>Avg 18-Hole Score</span></div><div><b>${t5per18==null?'—':t5per18.toFixed(1)}</b><span>Tiger 5 Misses per 18</span></div></div>`;
  // Rating from Tiger 5 misses per 18: under 3 God Tier, 3–5 Goated, above 5 Average.
- if(t5per18!=null){const v=Math.round(t5per18*10)/10,[label,cls,emo]=v<3?['God Tier','pos','👑']:v<=5?['Goated','pos','🐐']:['Average','','😐'];
-  h+=`<div class="card rating"><span class="rl">Rating</span><b class="${cls}">${emo} ${label}</b><span class="hint" style="margin:0">${v.toFixed(1)} Tiger 5 misses per 18 · under 3 God Tier, 3–5 Goated, above 5 Average</span></div>`;}
+ if(t5per18!=null){const v=Math.round(t5per18*10)/10,tier=v<3?0:v<=5?1:2;
+  const tiers=[['👑','God Tier','Under 3'],['🐐','Goated','3 to 5'],['😐','Average','More than 5']];
+  h+=`<div class="card rating"><span class="rl">Rating</span><b class="${tier<2?'pos':''}">${tiers[tier][0]} ${tiers[tier][1]}</b>
+  <p class="rsum">${mineView?'You average':esc(handle(id))+' averages'} <b>${v.toFixed(1)}</b> Tiger 5 misses per 18 holes.</p>
+  <div class="rscale">${tiers.map(([e,l,r],i)=>`<div class="${i===tier?'on':''}"><span>${e} ${l}</span><span>${r} misses</span></div>`).join('')}</div></div>`;}
+ if(S.photoView===id&&photoOf(id))h+=`<div class="overlay photo-ov" role="dialog" aria-label="Profile photo" data-act="closephoto"><div class="row" style="flex:none"><b style="color:#fff">${esc(mineView?'You':handle(id))}</b><button data-act="closephoto" style="flex:none">Close</button></div><img src="${esc(photoOf(id))}" alt="${esc(handle(id))}"></div>`;
  if(x.index==null)h+=`<p class="sub">${x.rs.length?`${x.need} more rated round${x.need>1?'s':''} until ${mineView?'your':'their'} index is set.`:'Post 3 complete rounds with a course rating and slope to get an index.'}</p>`;
- if(x.rs.length)h+=`<div class="card"><b>Last ${x.rs.length} differentials</b>${diffChart(x)}<p class="hint" style="margin-top:4px">${x.index!=null?`Green bars are the ${x.take} lowest; they set the index (dashed line).`:'Differentials so far.'}</p></div>`;
+ if(x.rs.length)h+=`<div class="card"><b>Last ${x.rs.length} Differentials</b>${diffChart(x)}<p class="hint" style="margin-top:4px">${x.index!=null?`Green bars are the ${x.take} lowest; they set the index (dashed line).`:'Differentials so far.'}</p></div>`;
  if(holes){
-  h+=`<h2>Where the strokes go</h2><div class="card"><table>`;
+  h+=`<h2>Where the Strokes Go</h2><div class="card"><table>`;
   RULES.forEach(r=>{const c=complete.reduce((a,z)=>a+((z.per&&z.per[r.k])||0),0)/holes*18;h+=`<tr><td>${r.n}<div class="bar"><i style="width:${Math.min(100,c/3*100)}%"></i></div></td><td class="n">${c.toFixed(1)}</td></tr>`});
   h+=`</table><p class="hint">Average misses per 18 holes.</p></div>`;
  }
  if(mineView){const old=oldRounds();if(old.length)h+=`<div class="card note"><b>${old.length} round${old.length>1?'s':''} saved on this phone</b><p style="margin:4px 0 10px">These are from the old version of the app. Post them to your card so they count.</p><button class="primary" data-act="import" ${S.busy?'disabled':''}>Post ${old.length} round${old.length>1?'s':''}</button></div>`}
  h+=`<h2>Rounds</h2>`;
- h+=rounds.length?rounds.map(r=>roundItem(r,false)).join(''):`<div class="card empty"><b>No rounds yet</b>${mineView?'Tap Play to start your first one.':'Nothing posted yet.'}</div>`;
+ h+=rounds.length?rounds.map(r=>roundItem(r,false)).join(''):`<div class="card empty"><b>No Rounds Yet</b>${mineView?'Tap Play to start your first one.':'Nothing posted yet.'}</div>`;
  return h;
 }
 
 function roundView(key){
  const [u,rid]=(key||'').split('/');
  const r=(S.rounds[u]||[]).find(z=>z.id===rid);
- if(!r)return header('Round')+`<div class="card empty"><b>Round not found</b>It may have been deleted.</div>`;
- const mine=u===S.me,x=hcp(S.rounds[u]);
+ if(!r)return header('Round')+`<div class="card empty"><b>Round Not Found</b>It may have been deleted.</div>`;
+ const mine=u===S.me,x=hcp(S.rounds[u]),scorer=r.enteredBy&&r.enteredBy!==u?r.enteredBy:null;
  let h=header(r.course,(mine?'You':handle(u))+' · '+fmtDate(r.date));
- h+=`<button class="item plain" style="margin:0 0 8px" data-player="${esc(u)}">${av(u)}<div class="mid"><b>${esc(mine?'You':handle(u))}</b><span>View profile</span></div></button>`;
+ h+=`<button class="item plain" style="margin:0 0 8px" data-player="${esc(u)}">${av(u)}<div class="mid"><b>${esc(mine?'You':handle(u))}</b><span>View profile${scorer?' · Scored by '+esc(scorer===S.me?'you':handle(scorer)):''}</span></div></button>`;
  h+=`<p class="sub">${r.tee?esc(r.tee)+' tees · ':''}${r.rating?`${r.rating}/${r.slope}`:'No rating'}${r.n===9?' · 9 holes':''}${x.used.has(r.id)?' · <span class="tag">Counts toward index</span>':''}</p>`;
  h+=`<div class="card big"><div><b>${r.score}</b><span>${r.complete?rel(r.score-r.parPlayed)+' to par':r.holesPlayed+' holes'}</span></div><div><b>${r.net!=null?r.net:'—'}</b><span>Net${r.ch!=null?` (CH ${r.ch})`:''}</span></div><div><b>${fmtDiff(r.diff)}</b><span>Differential</span></div><div><b>${r.t5}</b><span>Tiger 5</span></div></div>`;
  const hs=r.holes||[],start=r.nine==='back'?10:1;
@@ -550,7 +606,10 @@ function roundView(key){
   h+=coms.length?coms.map(c=>`<div class="comment">${av(c.user_id)}<div class="mid"><button class="link plain namelink" data-player="${esc(c.user_id)}">${esc(c.user_id===S.me?'You':handle(c.user_id))}</button> <span class="hint" style="margin:0">${relDay(c.created_at.slice(0,10))}</span><p>${esc(c.body)}</p></div>${c.user_id===S.me||mine?`<button class="link" data-delcomment="${esc(c.id)}" data-rid="${esc(r.id)}" aria-label="Delete comment">Delete</button>`:''}</div>`).join(''):`<p class="hint" style="margin:0 0 6px">No comments yet. Say something nice. Or don’t.</p>`;
   h+=`<div class="row" style="margin-top:8px"><input id="cbody" maxlength="500" placeholder="Add a comment…" autocomplete="off"><button class="primary" style="flex:none" data-act="postcomment" data-id="${esc(r.id)}" ${S.busy?'disabled':''}>Post</button></div></div>`;
  }
- if(mine&&!r.pending)h+=S.confirm==='del'?`<div class="card note"><p style="margin-top:0">Delete this round for good? It also comes off your handicap.</p><div class="row"><button class="danger" data-act="delround" data-id="${esc(r.id)}">Delete round</button><button data-act="cancelc">Keep it</button></div></div>`:`<button class="wide" data-act="ask" data-c="del">Delete round</button>`;
+ // Scorecard photos (front/back) taken when the round was started.
+ if((r.scorecards||[]).length)h+=`<h2>Scorecard</h2><div class="row" style="margin-bottom:12px">${r.scorecards.map((p,i)=>`<button data-act="viewscorecard" data-path="${esc(p)}">📷 ${r.scorecards.length>1?(i?'Back':'Front'):'Scorecard'}</button>`).join('')}</div>`;
+ if(S.receiptView&&S.receiptView.round===r.id)h+=`<div class="overlay" role="dialog" aria-label="Scorecard photo"><div class="row" style="flex:none"><b style="color:#fff">Scorecard</b><button data-act="closereceipt" style="flex:none">Close</button></div><img src="${esc(S.receiptView.url)}" alt="Scorecard photo"></div>`;
+ if((mine||r.enteredBy===S.me)&&!r.pending)h+=S.confirm==='del'?`<div class="card note"><p style="margin-top:0">Delete this round for good? It also comes off ${mine?'your':'their'} handicap.</p><div class="row"><button class="danger" data-act="delround" data-id="${esc(r.id)}">Delete Round</button><button data-act="cancelc">Keep it</button></div></div>`:`<button class="wide" data-act="ask" data-c="del">Delete Round</button>`;
  return h;
 }
 
@@ -567,6 +626,8 @@ const BET_KINDS={
  best_round:{label:'Best single round',low:true,single:true},
  custom:{label:'Custom bet (pick the winner)',manual:true}
 };
+// Venmo: a link to someone's Venmo profile (handles are only readable by friends).
+const venmoLink=(u,label)=>S.venmo&&S.venmo[u]?`<a class="venmo" href="https://venmo.com/u/${encodeURIComponent(S.venmo[u])}" target="_blank" rel="noopener">${label||'Venmo @'+esc(S.venmo[u])}</a>`:'';
 const fmtMoney=(n)=>{const v=Math.round(Math.abs(n)*100)/100;return '$'+(v%1?v.toFixed(2):v.toFixed(0))};
 const fmtRange=(t)=>t.start_date===t.end_date?fmtDate(t.start_date):fmtDate(t.start_date)+' – '+fmtDate(t.end_date);
 const tripStatus=(t)=>{if(t.ended_at)return 'done';const d=today();return d<t.start_date?'upcoming':d>t.end_date?'done':'live'};
@@ -644,10 +705,10 @@ function fewestPayments(net){
 function tripsView(){
  let h=header('Trips');
  if(!S.tripsOk)return h+`<div class="card note"><b>Trips need one more database step</b><p style="margin:4px 0 0">Run <b>supabase/trips.sql</b> in the Supabase SQL Editor, then reopen the app.</p></div>`;
- h+=`<button class="primary wide" style="margin-bottom:14px" data-nav="newtrip">Plan a trip</button>`;
- if(!S.trips.length)return h+`<div class="card empty"><b>No trips yet</b>Create a trip, add your friends, and set side bets like fewest putts. Rounds posted during the trip count automatically.</div>`;
+ h+=`<button class="primary wide" style="margin-bottom:14px" data-nav="newtrip">Plan a Trip</button>`;
+ if(!S.trips.length)return h+`<div class="card empty"><b>No Trips Yet</b>Create a trip, add your friends, and set side bets like fewest putts. Rounds posted during the trip count automatically.</div>`;
  const done=S.trips.filter(t=>tripStatus(t)==='done'),active=S.trips.filter(t=>tripStatus(t)!=='done'),showDone=S.tripsFilter==='done';
- h+=`<div class="ttabs" style="grid-template-columns:1fr 1fr" role="tablist" aria-label="Trips"><button role="tab" data-tfilter="active" aria-selected="${!showDone}">Current trips${active.length?`<span class="cnt">${active.length}</span>`:''}</button><button role="tab" data-tfilter="done" aria-selected="${showDone}">Completed trips${done.length?`<span class="cnt">${done.length}</span>`:''}</button></div>`;
+ h+=`<div class="ttabs" style="grid-template-columns:1fr 1fr" role="tablist" aria-label="Trips"><button role="tab" data-tfilter="active" aria-selected="${!showDone}">Current Trips${active.length?`<span class="cnt">${active.length}</span>`:''}</button><button role="tab" data-tfilter="done" aria-selected="${showDone}">Completed Trips${done.length?`<span class="cnt">${done.length}</span>`:''}</button></div>`;
  const list=showDone?done:active;
  if(!list.length)return h+`<div class="card empty"><b>${showDone?'No completed trips yet':'No current trips'}</b>${showDone?'Trips show up here once they’re over or the organizer ends them.':'Plan one above.'}</div>`;
  list.forEach(t=>{
@@ -658,17 +719,17 @@ function tripsView(){
 }
 function newTripView(){
  const fr=friendIds(),end=new Date();end.setDate(end.getDate()+3);
- return header('Plan a trip','Trips')+`<div class="card">
+ return header('Plan a Trip','Trips')+`<div class="card">
  <label for="tname">Trip name</label><input id="tname" maxlength="60" placeholder="e.g. Myrtle Beach 2026">
  <div class="row"><div><label for="tstart">First day</label><input type="date" id="tstart" value="${today()}"></div><div><label for="tend">Last day</label><input type="date" id="tend" value="${isoDate(end)}"></div></div>
  <label>Who’s going</label>
  ${fr.length?`<div class="pick">${fr.map(id=>`<button data-tsel="${esc(id)}" aria-pressed="${S.tripSel.includes(id)}">${esc(handle(id))}</button>`).join('')}</div><p class="hint">You’re included automatically. Only friends can be added; you can add more later.</p>`
   :`<p class="hint">Add friends on the Friends tab first, then invite them here.</p>`}
- <button class="primary wide" style="margin-top:14px" data-act="createtrip" ${S.busy?'disabled':''}>Create trip</button></div>`;
+ <button class="primary wide" style="margin-top:14px" data-act="createtrip" ${S.busy?'disabled':''}>Create Trip</button></div>`;
 }
 function tripView(id){
  const t=S.trips.find(x=>x.id===id);
- if(!t)return header('Trip','Trips')+`<div class="card empty"><b>Trip not found</b>It may have been deleted, or you were removed from it.</div>`;
+ if(!t)return header('Trip','Trips')+`<div class="card empty"><b>Trip Not Found</b>It may have been deleted, or you were removed from it.</div>`;
  const mem=S.tripMembers[t.id]||[],owner=t.created_by===S.me,st=tripStatus(t),bets=S.bets[t.id]||[];
  const who=(u)=>u===S.me?'You':handle(u);
  let h=header(t.name,fmtRange(t));
@@ -678,13 +739,13 @@ function tripView(id){
  const beersTot=mem.reduce((a,u)=>a+allTripRounds(t,u).reduce((x,r)=>x+holeSum(r,'beer'),0),0),gbTot=mem.reduce((a,u)=>a+allTripRounds(t,u).reduce((x,r)=>x+holeSum(r,'gb'),0),0);
  const tabs=[['bets','Bets',bets.length],['receipts','Receipts',exN],['beers','Beers 🍺',beersTot],['gb','GB 💨',gbTot],['rounds','Rounds',rs.length],['players','Players',mem.length]];
  // Ending a trip: the organizer can end it early (later rounds stop counting and settle-up is final).
- if(st==='done')h+=`<div class="card note item" style="margin-bottom:12px"><div class="mid"><b>Trip completed</b><span>${t.ended_at?'Ended '+fmtDate(t.end_date)+'. ':''}Bets and settle-ups are final.</span></div>${owner&&t.ended_at?`<button data-act="reopentrip">Reopen</button>`:''}</div>`;
- else if(owner)h+=S.confirm==='endtrip'?`<div class="card note" style="margin-bottom:12px"><p style="margin-top:0">End the trip now? Rounds posted after today won’t count toward bets, and settle-ups become final.</p><div class="row"><button class="danger" data-act="endtrip">End trip</button><button data-act="cancelc">Not yet</button></div></div>`
-  :`<button class="wide" style="margin-bottom:12px" data-act="ask" data-c="endtrip">End trip</button>`;
+ if(st==='done')h+=`<div class="card note item" style="margin-bottom:12px"><div class="mid"><b>Trip Completed</b><span>${t.ended_at?'Ended '+fmtDate(t.end_date)+'. ':''}Bets and settle-ups are final.</span></div>${owner&&t.ended_at?`<button data-act="reopentrip">Reopen</button>`:''}</div>`;
+ else if(owner)h+=S.confirm==='endtrip'?`<div class="card note" style="margin-bottom:12px"><p style="margin-top:0">End the trip now? Rounds posted after today won’t count toward bets, and settle-ups become final.</p><div class="row"><button class="danger" data-act="endtrip">End Trip</button><button data-act="cancelc">Not yet</button></div></div>`
+  :`<button class="wide" style="margin-bottom:12px" data-act="ask" data-c="endtrip">End Trip</button>`;
  h+=`<div class="ttabs" role="tablist" aria-label="Trip sections">${tabs.map(([k,l,n])=>`<button role="tab" data-ttab="${k}" aria-selected="${tab===k}">${l}${n?`<span class="cnt">${n}</span>`:''}</button>`).join('')}</div>`;
 
  if(tab==='bets'){
- if(!bets.length)h+=`<div class="card empty"><b>No bets yet</b>Add one below. Leaderboards fill in from finished rounds posted ${fmtRange(t)}.</div>`;
+ if(!bets.length)h+=`<div class="card empty"><b>No Bets Yet</b>Add one below. Leaderboards fill in from finished rounds posted ${fmtRange(t)}.</div>`;
  bets.forEach(b=>{
   const k=BET_KINDS[b.kind]||BET_KINDS.custom,stake=+b.stake||0;
   h+=`<div class="card"><div class="bet-head"><b>${esc(b.name)}</b><span class="money">${stake?fmtMoney(stake)+' each · '+fmtMoney(stake*mem.length)+' pot':'Bragging rights'}</span></div>`;
@@ -699,18 +760,18 @@ function tripView(id){
    if(s.uneven)h+=`<p class="hint">Players have played different numbers of rounds, so totals aren’t a fair comparison yet.</p>`;
    if(s.leaders.length)h+=`<p class="hint">${st==='done'?'Won by':'Leading:'} <b>${esc(s.leaders.map(who).join(' & '))}</b>${s.leaders.length>1&&stake?' (pot split)':''}</p>`;
   }
-  h+=S.confirm==='bet:'+b.id?`<div class="row" style="margin-top:10px"><button class="danger" data-act="delbet" data-id="${esc(b.id)}">Delete bet</button><button data-act="cancelc">Keep</button></div>`
-   :`<p style="margin:8px 0 0;text-align:right"><button class="link" data-act="ask" data-c="bet:${esc(b.id)}">Delete bet</button></p>`;
+  h+=S.confirm==='bet:'+b.id?`<div class="row" style="margin-top:10px"><button class="danger" data-act="delbet" data-id="${esc(b.id)}">Delete Bet</button><button data-act="cancelc">Keep</button></div>`
+   :`<p style="margin:8px 0 0;text-align:right"><button class="link" data-act="ask" data-c="bet:${esc(b.id)}">Delete Bet</button></p>`;
   h+=`</div>`;
  });
 
  const k=BET_KINDS[S.betKind];
- h+=`<div class="card"><b>Add a bet</b>
+ h+=`<div class="card"><b>Add a Bet</b>
  <label for="bkind">Bet</label><select id="bkind">${Object.entries(BET_KINDS).map(([v,x])=>`<option value="${v}" ${v===S.betKind?'selected':''}>${x.label}</option>`).join('')}</select>
  ${k.manual?`<label for="bname">What’s the bet?</label><input id="bname" maxlength="60" placeholder="e.g. Longest drive on 18">`:''}
  ${k.single||k.manual?'':`<label>Scoring</label><div class="seg">${[['total','Trip total'],['avg','Average per 18']].map(([v,l])=>`<button data-bs="${v}" aria-pressed="${S.betScoring===v}">${l}</button>`).join('')}</div>`}
  <label for="bstake">Stake per player ($)</label><input id="bstake" inputmode="decimal" placeholder="0 for bragging rights">
- <button class="primary wide" style="margin-top:14px" data-act="addbet" ${S.busy?'disabled':''}>Add bet</button></div>`;
+ <button class="primary wide" style="margin-top:14px" data-act="addbet" ${S.busy?'disabled':''}>Add Bet</button></div>`;
  }
 
  if(tab==='receipts')h+=expensesSection(t,mem,who);
@@ -718,13 +779,13 @@ function tripView(id){
  if(tab==='gb')h+=extrasBoard(t,'gb','💨','GB','GB');
 
  // Bets settle up at the bottom of Bets; receipts have their own under Receipts.
- if(tab==='bets'&&bets.some(b=>+b.stake>0))h+=settleCard(t,settleBets(t),st==='done'?'Settle up bets':'Settle up bets if the trip ended now','Bets only. Receipts settle up separately under Receipts.');
+ if(tab==='bets'&&bets.some(b=>+b.stake>0))h+=settleCard(t,settleBets(t),st==='done'?'Settle Up Bets':'Settle Up Bets (If the Trip Ended Now)','Bets only. Receipts settle up separately under Receipts.');
 
- if(tab==='rounds')h+=rs.length?rs.map(r=>roundItem(r)).join(''):`<div class="card empty"><b>No rounds yet</b>Finished rounds posted ${fmtRange(t)} show up here.</div>`;
+ if(tab==='rounds')h+=rs.length?rs.map(r=>roundItem(r)).join(''):`<div class="card empty"><b>No Rounds Yet</b>Finished rounds posted ${fmtRange(t)} show up here.</div>`;
 
  if(tab==='players'){
  h+=`<div class="card">`;
- h+=mem.map(u=>`<div class="item" style="padding:6px 0"><button class="item plain" data-player="${esc(u)}" aria-label="View ${esc(who(u))} profile">${av(u)}<div class="mid"><b>${esc(who(u))}</b>${u===t.created_by?'<span>Organizer</span>':''}</div></button>${friendAction(u,'Add friend')}${owner&&u!==S.me?`<button class="link" data-act="rmmember" data-u="${esc(u)}">Remove</button>`:''}</div>`).join('');
+ h+=mem.map(u=>`<div class="item" style="padding:6px 0"><button class="item plain" data-player="${esc(u)}" aria-label="View ${esc(who(u))} profile">${av(u)}<div class="mid"><b>${esc(who(u))}</b>${u===t.created_by?'<span>Organizer</span>':''}</div></button>${friendAction(u,'Add Friend')}${owner&&u!==S.me?`<button class="link" data-act="rmmember" data-u="${esc(u)}">Remove</button>`:''}</div>`).join('');
  if(mem.some(u=>u!==S.me&&!isFriend(u)))h+=`<p class="hint">Friends see each other’s rounds all year, not just on this trip.</p>`;
  {
   // Anyone on the trip can add their own friends; only the organizer removes others.
@@ -734,8 +795,8 @@ function tripView(id){
   if(waiting.length)h+=`<p class="hint">Waiting to accept your friend request: ${esc(waiting.map(handle).join(', '))}.</p>`;
  }
  h+=`</div>`;
- h+=owner?(S.confirm==='deltrip'?`<div class="card note"><p style="margin-top:0">Delete this trip and all its bets? Rounds stay on everyone’s cards.</p><div class="row"><button class="danger" data-act="deltrip">Delete trip</button><button data-act="cancelc">Keep it</button></div></div>`:`<button class="wide" data-act="ask" data-c="deltrip">Delete trip</button>`)
-  :(S.confirm==='leave'?`<div class="row"><button class="danger" data-act="leavetrip">Leave trip</button><button data-act="cancelc">Stay</button></div>`:`<button class="wide" data-act="ask" data-c="leave">Leave trip</button>`);
+ h+=owner?(S.confirm==='deltrip'?`<div class="card note"><p style="margin-top:0">Delete this trip and all its bets? Rounds stay on everyone’s cards.</p><div class="row"><button class="danger" data-act="deltrip">Delete Trip</button><button data-act="cancelc">Keep it</button></div></div>`:`<button class="wide" data-act="ask" data-c="deltrip">Delete Trip</button>`)
+  :(S.confirm==='leave'?`<div class="row"><button class="danger" data-act="leavetrip">Leave Trip</button><button data-act="cancelc">Stay</button></div>`:`<button class="wide" data-act="ask" data-c="leave">Leave Trip</button>`);
  }
  return h;
 }
@@ -756,33 +817,33 @@ function settleCard(t,sv,title,note){
  const mem=S.tripMembers[t.id]||[],who=(u)=>u===S.me?'You':handle(u);
  const sgn=(v)=>{v=Math.round((v||0)*100)/100;return `<span class="${v>0?'pos':v<0?'neg':''}">${v>0?'+':v<0?'−':''}${fmtMoney(v)}</span>`};
  return `<h2>${esc(title)}</h2><div class="card">`
-  +(sv.pays.length?`<table><tbody>${sv.pays.map(p=>`<tr><td>${av(p.from,'xs')} ${esc(who(p.from))} pay${p.from===S.me?'':'s'} ${esc(p.to===S.me?'you':handle(p.to))}</td><td class="n">${fmtMoney(p.amt)}</td></tr>`).join('')}</tbody></table>`:`<p style="margin:0">Nobody owes anything yet.</p>`)
+  +(sv.pays.length?`<table><tbody>${sv.pays.map(p=>`<tr><td>${av(p.from,'xs')} ${esc(who(p.from))} pay${p.from===S.me?'':'s'} ${esc(p.to===S.me?'you':handle(p.to))}</td><td class="n">${fmtMoney(p.amt)}${p.from===S.me?venmoLink(p.to,'Venmo'):''}</td></tr>`).join('')}</tbody></table>`:`<p style="margin:0">Nobody owes anything yet.</p>`)
   +`<p class="hint">Net: ${mem.map(u=>`${esc(who(u))} ${sgn(sv.net[u])}`).join(' · ')}</p><p class="hint">${esc(note)} The app only keeps track; settle up however your group pays each other.</p></div>`;
 }
 function expensesSection(t,mem,who){
  const list=S.expenses[t.id]||[],ex=expenseTotals(t),total=list.reduce((a,e)=>a+e.amount,0);
  let h='';
  if(list.length){
-  h+=`<div class="card"><div class="bet-head"><b>Trip spending</b><span class="money">${fmtMoney(total)}</span></div><table style="margin-top:6px"><thead><tr><th>Player</th><th class="n">Paid</th><th class="n">Their share</th></tr></thead><tbody>${mem.map(u=>`<tr><td>${withPic(u,who(u))}</td><td class="n" style="font-weight:400">${fmtMoney(ex.paid[u]||0)}</td><td class="n">${fmtMoney(ex.share[u]||0)}</td></tr>`).join('')}</tbody></table></div>`;
-  h+=settleCard(t,settleReceipts(t),'Settle up receipts','Receipts only: what each person paid minus their share.');
-  h+=`<h2>All receipts</h2>`;
+  h+=`<div class="card"><div class="bet-head"><b>Trip Spending</b><span class="money">${fmtMoney(total)}</span></div><table style="margin-top:6px"><thead><tr><th>Player</th><th class="n">Paid</th><th class="n">Their share</th></tr></thead><tbody>${mem.map(u=>`<tr><td>${withPic(u,who(u))}</td><td class="n" style="font-weight:400">${fmtMoney(ex.paid[u]||0)}</td><td class="n">${fmtMoney(ex.share[u]||0)}</td></tr>`).join('')}</tbody></table></div>`;
+  h+=settleCard(t,settleReceipts(t),'Settle Up Receipts','Receipts only: what each person paid minus their share.');
+  h+=`<h2>All Receipts</h2>`;
   list.forEach(e=>{
    const split=(e.split_among||[]).filter(u=>mem.includes(u)),canDel=e.created_by===S.me||e.paid_by===S.me||t.created_by===S.me;
    const each=split.length?fmtMoney(e.amount/split.length):'';
    h+=`<div class="card"><div class="bet-head"><b>${esc(e.description)}</b><span class="money">${fmtMoney(e.amount)}</span></div>
    <p class="hint" style="margin:2px 0 0">Paid by ${esc(who(e.paid_by))}${e.spent_on?' · '+fmtDate(e.spent_on):''} · ${split.length===mem.length?'split between everyone':'split between '+esc(split.map(who).join(', '))}${split.length>1?` (about ${each} each)`:''}</p>
-   <div class="row" style="margin-top:8px">${e.receipt_path?`<button data-act="viewreceipt" data-path="${esc(e.receipt_path)}">View receipt</button>`:'<span class="hint" style="margin:0">No photo</span>'}${canDel?(S.confirm==='ex:'+e.id?`<button class="danger" data-act="delexpense" data-id="${esc(e.id)}">Delete</button><button data-act="cancelc">Keep</button>`:`<button class="link" style="flex:none" data-act="ask" data-c="ex:${esc(e.id)}">Delete</button>`):''}</div></div>`;
+   <div class="row" style="margin-top:8px">${e.receipt_path?`<button data-act="viewreceipt" data-path="${esc(e.receipt_path)}">View Receipt</button>`:'<span class="hint" style="margin:0">No photo</span>'}${canDel?(S.confirm==='ex:'+e.id?`<button class="danger" data-act="delexpense" data-id="${esc(e.id)}">Delete</button><button data-act="cancelc">Keep</button>`:`<button class="link" style="flex:none" data-act="ask" data-c="ex:${esc(e.id)}">Delete</button>`):''}</div></div>`;
   });
  }
  const paidBy=S.exPaidBy&&mem.includes(S.exPaidBy)?S.exPaidBy:S.me,split=(S.exSplit||mem).filter(u=>mem.includes(u));
- h+=`<div class="card"><b>Add a receipt</b>
+ h+=`<div class="card"><b>Add a Receipt</b>
  <label for="exdesc">What was it for?</label><input id="exdesc" maxlength="80" placeholder="e.g. Dinner at the clubhouse">
  <div class="row"><div><label for="examt">Total ($)</label><input id="examt" inputmode="decimal" placeholder="0.00"></div><div><label for="exdate">Date</label><input id="exdate" type="date" value="${today()}"></div></div>
  <label>Who paid?</label><div class="pick">${mem.map(u=>`<button data-expaid="${esc(u)}" aria-pressed="${u===paidBy}">${esc(who(u))}</button>`).join('')}</div>
  <label>Split between</label><div class="pick">${mem.map(u=>`<button data-exsplit="${esc(u)}" aria-pressed="${split.includes(u)}">${esc(who(u))}</button>`).join('')}</div>
  <label for="exphoto">Receipt photo (optional)</label><input id="exphoto" type="file" accept="image/*,application/pdf">
  ${S.exFile?`<p class="hint">Attached: ${esc(S.exFile.name)} · <button class="link" data-act="exnofile">Remove</button></p>`:''}
- <button class="primary wide" style="margin-top:14px" data-act="addexpense" ${S.busy?'disabled':''}>${S.busy?'Saving…':'Add receipt'}</button></div>`;
+ <button class="primary wide" style="margin-top:14px" data-act="addexpense" ${S.busy?'disabled':''}>${S.busy?'Saving…':'Add Receipt'}</button></div>`;
  if(S.receiptView)h+=`<div class="overlay" role="dialog" aria-label="Receipt"><div class="row" style="flex:none"><b style="color:#fff">Receipt</b><button data-act="closereceipt" style="flex:none">Close</button></div>${S.receiptView.pdf?`<p style="color:#fff">This receipt is a PDF.</p><a class="primary" style="display:block;text-align:center;padding:12px;border-radius:10px;background:var(--green);color:var(--on-green)" href="${esc(S.receiptView.url)}" target="_blank" rel="noopener">Open PDF</a>`:`<img src="${esc(S.receiptView.url)}" alt="Receipt photo">`}</div>`;
  return h;
 }
@@ -807,6 +868,19 @@ async function uploadPhoto(file){
   toast('Photo updated');
  }catch(e){fail(e,'Your photo didn’t upload.')}
  S.busy=false;render();
+}
+// Scorecard photo (front or back) for a course that isn't in the app: shrunk like
+// receipts and uploaded to scorecards/<your id>/ right away, then attached when the round starts.
+async function uploadScorecard(side,file){
+ if(S.scBusy)return;
+ S.scBusy=side;render();
+ try{
+  const up=await prepReceipt(file);if(up.type==='application/pdf')throw new Error('Use a photo of the scorecard.');
+  const path=S.me+'/'+newId()+'-'+side+'.jpg';
+  const {error}=await sb.storage.from('scorecards').upload(path,up.blob,{contentType:'image/jpeg',upsert:false});if(error)throw error;
+  S.scPaths={...(S.scPaths||{}),[side]:path};toast((side==='front'?'Front':'Back')+' of the scorecard added');
+ }catch(e){fail(e,'The scorecard photo didn’t upload.')}
+ S.scBusy=null;render();
 }
 // Shrinks photos to at most 1600px (JPEG) so uploads are quick and storage stays small.
 async function prepReceipt(file){
@@ -916,14 +990,14 @@ function boardBalances(){
 function boardView(){
  let h=header('Betting Board');
  if(!S.boardOk)return h+`<div class="card note"><b>The board needs one more database step</b><p style="margin:4px 0 0">Run <b>supabase/board.sql</b> in the Supabase SQL Editor, then reopen the app.</p></div>`;
- h+=`<button class="primary wide" style="margin-bottom:14px" data-nav="newbet">Post a bet</button>`;
+ h+=`<button class="primary wide" style="margin-bottom:14px" data-nav="newbet">Post a Bet</button>`;
  const bal=boardBalances();
  if(bal.length){
   const net=bal.reduce((a,[,v])=>a+v,0);
-  h+=`<div class="card"><div class="bet-head"><b>Your board balance</b><span class="money ${net>0?'pos':net<0?'neg':''}">${net>0?'+':net<0?'−':''}${fmtMoney(net)}</span></div><table style="margin-top:6px"><tbody>${bal.map(([u,v])=>`<tr><td>${v>0?esc(handle(u))+' owes you':'You owe '+esc(handle(u))}</td><td class="n ${v>0?'pos':'neg'}">${fmtMoney(v)}</td></tr>`).join('')}</tbody></table><p class="hint">Totals from every settled bet. Settle up however your group pays each other.</p></div>`;
+  h+=`<div class="card"><div class="bet-head"><b>Your Board Balance</b><span class="money ${net>0?'pos':net<0?'neg':''}">${net>0?'+':net<0?'−':''}${fmtMoney(net)}</span></div><table style="margin-top:6px"><tbody>${bal.map(([u,v])=>`<tr><td>${v>0?esc(handle(u))+' owes you':'You owe '+esc(handle(u))}</td><td class="n ${v>0?'pos':'neg'}">${fmtMoney(v)}${v<0?venmoLink(u,'Venmo'):''}</td></tr>`).join('')}</tbody></table><p class="hint">Totals from every settled bet. Settle up however your group pays each other.</p></div>`;
  }
- if(!S.board.length)return h+`<div class="card empty"><b>Nothing on the board yet</b>Post a bet for later, like “Jon breaks 80 at Whiskey Creek”. Your friends see it and pick a side.</div>`;
- [['open','Taking picks'],['locked','Picks locked, waiting on the result'],['settled','Settled'],['void','Called off']].forEach(([st,label])=>{
+ if(!S.board.length)return h+`<div class="card empty"><b>Nothing on the Board Yet</b>Post a bet for later, like “Jon breaks 80 at Whiskey Creek”. Your friends see it and pick a side.</div>`;
+ [['open','Taking Picks'],['locked','Picks Locked, Waiting on the Result'],['settled','Settled'],['void','Called Off']].forEach(([st,label])=>{
   let list=S.board.filter(b=>b.status===st);if(!list.length)return;
   if(st==='open')list=list.sort((a,b)=>needsMyPick(b)-needsMyPick(a));
   if(st==='settled'||st==='void')list=list.slice(0,20);
@@ -958,16 +1032,16 @@ function boardCard(b){
   let c='';
   if(S.settling===b.id)c=`<p class="hint" style="width:100%;margin:0">Tap <b>Won</b> next to the winning option. Picks close when you do.</p>`+btn('cancelsettle','Cancel');
   else if(S.confirm==='bbdel:'+b.id)c=btn('delboard','Delete for good','danger')+btn('cancelc','Keep');
-  else if(open)c=btn('lockbet','Lock picks')+btn('startsettle','Settle')+btn('voidbet','Call off');
-  else if(b.status==='locked')c=btn('startsettle','Settle','primary')+btn('reopenbet','Reopen picks')+btn('voidbet','Call off');
-  else c=btn('reopenbet',b.status==='settled'?'Undo result':'Reopen')+`<button data-act="ask" data-c="bbdel:${esc(b.id)}">Delete</button>`;
+  else if(open)c=btn('lockbet','Lock Picks')+btn('startsettle','Settle')+btn('voidbet','Call Off');
+  else if(b.status==='locked')c=btn('startsettle','Settle','primary')+btn('reopenbet','Reopen Picks')+btn('voidbet','Call Off');
+  else c=btn('reopenbet',b.status==='settled'?'Undo Result':'Reopen')+`<button data-act="ask" data-c="bbdel:${esc(b.id)}">Delete</button>`;
   h+=`<div class="row" style="flex-wrap:wrap;margin-top:10px">${c}</div>`;
  }
  return h+`</div>`;
 }
 function newBetView(){
  const n=S.bbOpts;
- return header('Post a bet','Betting Board')+`<div class="card">
+ return header('Post a Bet','Betting Board')+`<div class="card">
  <label for="bbtitle" style="margin-top:0">The bet</label><input id="bbtitle" maxlength="80" placeholder="e.g. Jon breaks 80 at Whiskey Creek">
  <label for="bbdetails">Details (optional)</label><input id="bbdetails" maxlength="300" placeholder="Which round, tiebreaks, anything else">
  <label>Options</label>${Array.from({length:n},(_,i)=>`<input id="bbopt${i}" maxlength="40" style="margin-bottom:6px" value="${i===0?'Yes':i===1?'No':''}" placeholder="Option ${i+1}">`).join('')}
@@ -975,7 +1049,7 @@ function newBetView(){
  <p class="hint">For “who wins” bets, use player names as the options.</p>
  <div class="row"><div><label for="bbstake">Suggested bet ($, optional)</label><input id="bbstake" inputmode="decimal" placeholder="e.g. 20"></div><div><label for="bbdate">Settle by (optional)</label><input id="bbdate" type="date" min="${today()}"></div></div>
  <p class="hint">Everyone picks an option and chooses how much to put on it. The suggested amount is just the starting number.</p>
- <button class="primary wide" style="margin-top:14px" data-act="postbet" ${S.busy?'disabled':''}>Post to the board</button></div>
+ <button class="primary wide" style="margin-top:14px" data-act="postbet" ${S.busy?'disabled':''}>Post to the Board</button></div>
  <p class="sub">Once it’s decided, you mark the winner. Everyone who picked wrong pays what they bet, split among those who picked right in proportion to how much each of them bet. The app only keeps track.</p>`;
 }
 async function postBoardBet(){
@@ -1016,15 +1090,21 @@ function playHtml(){
 }
 function startView(){
  const ix=S.status==='ready'?myIndex():null;
- return `${header('New round')}
+ return `${header('New Round')}
  <div class="card"><label for="course">Course</label><select id="course">${Object.entries(COURSES).map(([k,c])=>`<option value="${k}">${esc(c.name)}</option>`).join('')}<option value="">Other course</option></select>
- <div id="otherWrap" hidden><label for="cname">Course name</label><input id="cname" maxlength="60" placeholder="Where are you playing?"></div>
+ <div id="otherWrap" hidden><label for="cname">Course name</label><input id="cname" maxlength="60" placeholder="Where are you playing?">
+  <label>Scorecard Photos</label>
+  <div class="row scrow">${['front','back'].map(side=>`<div><label class="filebtn${S.scPaths&&S.scPaths[side]?' done':''}" for="sc-${side}">${S.scBusy===side?'Uploading…':S.scPaths&&S.scPaths[side]?'✓ '+(side==='front'?'Front':'Back')+' added':'+ '+(side==='front'?'Front':'Back')}</label><input id="sc-${side}" type="file" accept="image/*" hidden></div>`).join('')}</div>
+  <p class="hint">Snap the front and back of the scorecard. Your friends can see them on the round.</p></div>
  <label for="tee">Tees</label><select id="tee">${teeOpts('sr')}</select>
  <div class="row"><div><label for="rating">Course rating</label><input id="rating" inputmode="decimal" placeholder="e.g. 71.9"></div><div><label for="slope">Slope</label><input id="slope" inputmode="numeric" placeholder="e.g. 133"></div></div>
  <label for="rdate">Date played</label><input type="date" id="rdate" value="${today()}" max="${today()}">
  <label>Holes</label><div class="seg" id="nseg">${[['18','18'],['front','Front 9'],['back','Back 9']].map(([v,l])=>`<button aria-pressed="${S.nsel===v}" data-n="${v}">${l}</button>`).join('')}</div>
  <p class="hint" id="chline"></p>
- <button class="primary wide" style="margin-top:14px" data-act="start">Start round</button></div>
+ <label>Playing With</label>
+ ${friendIds().length?`<div class="pick">${friendIds().map(f=>`<button data-withsel="${esc(f)}" aria-pressed="${(S.withSel||[]).includes(f)}">${withPic(f,handle(f))}</button>`).join('')}</div>
+ <p class="hint">Pick up to 3 friends in your group. You’ll enter their scores on each hole and their rounds post to their cards.</p>`:`<p class="hint">Add friends to score your whole group.</p>`}
+ <button class="primary wide" style="margin-top:14px" data-act="start">Start Round</button></div>
  <p class="sub">Rating and slope are on the scorecard. Without them the round still posts but won’t count toward a handicap.${ix!=null?'':' Your index appears after 3 rated rounds.'}</p>`;
 }
 function syncStart(fresh){
@@ -1059,32 +1139,54 @@ function holeView(){
   <div><label>GB 💨</label><div class="stepper sm"><button data-gb="-1" aria-label="One less GB">−</button><output>${h.gb||0}</output><button data-gb="1" aria-label="One more GB">+</button></div></div>
  </div>
  <div class="chips">${p?(f.length?f.map(r=>`<span class="chip">${r.k==='r3'?'You Suck':'Nice Work Idiot'} - ${r.n.replace('No ','')}</span>`).join(''):'<span class="chip ok">Clean hole</span>'):''}</div></div>
- <div class="row"><button data-act="prev" ${hidx===0?'disabled':''}>Previous</button><button class="primary" data-act="next">${hidx===draft.holes.length-1?'Finish round':'Next hole'}</button></div>
- <p style="text-align:center"><button class="link" data-act="tosum">Review round</button></p>`;
+ ${(draft.others||[]).map((o,i)=>playerCard(o,i+1)).join('')}
+ <div class="row"><button data-act="prev" ${hidx===0?'disabled':''}>Previous</button><button class="primary" data-act="next">${hidx===draft.holes.length-1?'Finish Round':'Next Hole'}</button></div>
+ <p style="text-align:center"><button class="link" data-act="tosum">Review Round</button></p>`;
  return s;
 }
+// Compact scoring card for a friend in your group (data-p picks which player a button changes).
+function playerCard(o,pp){
+ const x=o.holes[hidx],pl=played(x),f=fails(x),P=`data-p="${pp}"`;
+ const mini=(k,emo,label)=>`<span class="mini"><button data-${k}="-1" ${P} aria-label="One less ${label} for ${esc(handle(o.uid))}">−</button><span>${emo} ${x[k]||0}</span><button data-${k}="1" ${P} aria-label="One more ${label} for ${esc(handle(o.uid))}">+</button></span>`;
+ return `<div class="card pcard">
+  <div class="phd">${av(o.uid,'xs')}<b>${esc(handle(o.uid))}</b><span class="sub" style="margin:0 0 0 auto">${rel((pl?x.score:x.par)-x.par)} to par</span></div>
+  <div class="row" style="align-items:flex-start">
+   <div><label>Strokes</label><div class="stepper sm"><button data-sc="-1" ${P} aria-label="Fewer strokes for ${esc(handle(o.uid))}">−</button><output>${pl?x.score:x.par}</output><button data-sc="1" ${P} aria-label="More strokes for ${esc(handle(o.uid))}">+</button></div></div>
+   <div><label>Putts</label><div class="stepper sm"><button data-pt="-1" ${P} aria-label="Fewer putts for ${esc(handle(o.uid))}">−</button><output>${x.putts==null?'–':x.putts}</output><button data-pt="1" ${P} aria-label="More putts for ${esc(handle(o.uid))}">+</button></div></div>
+  </div>
+  <div class="pick" style="margin-top:8px"><button data-tg="sc" ${P} aria-pressed="${!!x.sc}">Scoring club</button><button data-tg="ud" ${P} aria-pressed="${!!x.ud}">Missed up &amp; down</button></div>
+  <div class="row" style="margin-top:8px;justify-content:flex-start">${mini('beer','🍺','beer')}${mini('gb','💨','GB')}</div>
+  ${pl&&f.length?`<div class="chips" style="min-height:0">${f.map(r=>`<span class="chip">${r.n.replace('No ','')}</span>`).join('')}</div>`:''}
+ </div>`;
+}
+// A friend's holes wrapped like a round so calc() can score them.
+const otherRound=(o)=>({rating:draft.rating,slope:draft.slope,holes:o.holes});
 function summaryView(){
  const ix=S.status==='ready'?myIndex():null,t=calc(draft,ix);
- let s=`${header('Round summary',draft.course+' · '+fmtDate(draft.date))}
- <div class="card big"><div><b>${t.score}</b><span>Strokes (${rel(t.score-t.parPlayed)})</span></div><div><b>${t.net!=null?t.net:'—'}</b><span>Net${t.ch!=null?' (CH '+t.ch+')':''}</span></div><div><b>${t.putts==null?'—':t.putts}</b><span>Putts</span></div><div><b>${t.t5}</b><span>Tiger 5 misses</span></div></div>
+ let s=`${header('Round Summary',draft.course+' · '+fmtDate(draft.date))}
+ <div class="card big"><div><b>${t.score}</b><span>Strokes (${rel(t.score-t.parPlayed)})</span></div><div><b>${t.net!=null?t.net:'—'}</b><span>Net${t.ch!=null?' (CH '+t.ch+')':''}</span></div><div><b>${t.putts==null?'—':t.putts}</b><span>Putts</span></div><div><b>${t.t5}</b><span>Tiger 5 Misses</span></div></div>
  ${holeSum(draft,'beer')||holeSum(draft,'gb')?`<div class="tags" style="margin:-2px 0 10px">${extrasTags(draft)}</div>`:''}
  <div class="card"><table>`;
  RULES.forEach(r=>{const c=t.per[r.k];s+=`<tr><td>${r.n}<div class="bar"><i style="width:${t.holesPlayed?Math.min(100,c/t.holesPlayed*300):0}%"></i></div></td><td class="n">${c}</td></tr>`});
  s+=`</table></div>
  <div class="card"><b>Handicap</b><p class="hint" style="margin-top:4px">${t.diff!=null?`Score differential <b>${fmtDiff(t.diff)}</b> (adjusted gross ${t.ags}). It counts toward your index once posted.`:!t.complete?`You’ve scored ${t.holesPlayed} of ${t.n} holes. Unfinished rounds post, but don’t count toward a handicap.`:'No course rating and slope, so this round won’t count toward a handicap.'}</p></div>`;
- s+=S.status==='ready'?`<button class="primary wide" style="margin-bottom:8px" data-act="post" ${S.busy?'disabled':''}>${S.busy?'Posting…':'Post round'}</button>`:`<div class="card note"><p style="margin:0">Sign in to post this round. It stays saved on this phone until you do.</p></div>`;
- s+=`<div class="row"><button data-act="back">Back to holes</button>${S.confirm==='discard'?`<button class="danger" data-act="discard">Yes, discard</button>`:`<button data-act="ask" data-c="discard">Discard round</button>`}</div>`;
+ if((draft.others||[]).length){
+  s+=`<h2>Your Group</h2><div class="card"><table><thead><tr><th>Player</th><th class="n">Score</th><th class="n">Putts</th><th class="n">Tiger 5</th><th class="n">Diff</th></tr></thead><tbody>${draft.others.map(o=>{const x=calc(otherRound(o),hcp(S.rounds[o.uid]).index);return `<tr><td>${withPic(o.uid,handle(o.uid))}</td><td class="n">${x.score} <span style="font-weight:400;color:var(--mute)">${rel(x.score-x.parPlayed)}</span></td><td class="n" style="font-weight:400">${x.putts==null?'—':x.putts}</td><td class="n" style="font-weight:400">${x.t5}</td><td class="n" style="font-weight:400">${fmtDiff(x.diff)}</td></tr>`}).join('')}</tbody></table>
+  <p class="hint">Posting adds each friend’s round to their card, marked as scored by you. They can delete it if something’s wrong.</p></div>`;
+ }
+ s+=S.status==='ready'?`<button class="primary wide" style="margin-bottom:8px" data-act="post" ${S.busy?'disabled':''}>${S.busy?'Posting…':(draft.others||[]).length?'Post Rounds for Group':'Post Round'}</button>`:`<div class="card note"><p style="margin:0">Sign in to post this round. It stays saved on this phone until you do.</p></div>`;
+ s+=`<div class="row"><button data-act="back">Back to Holes</button>${S.confirm==='discard'?`<button class="danger" data-act="discard">Yes, discard</button>`:`<button data-act="ask" data-c="discard">Discard Round</button>`}</div>`;
  return s;
 }
 
 /* ---------- actions ---------- */
 function go(view,arg){
  if(view!==S.view||arg!==S.arg){S.exSplit=null;S.exPaidBy=null;S.exFile=null}
- S.view=view;S.arg=arg||null;S.confirm=null;S.editName=false;S.settling=null;S.receiptView=null;
+ S.view=view;S.arg=arg||null;S.confirm=null;S.editName=false;S.settling=null;S.receiptView=null;S.photoView=null;
  rememberPlace();render();
 }
 // Refreshing keeps you on the same page (and trip section); a fresh launch starts on the Feed.
-const VIEWS=['feed','play','trips','trip','newtrip','board','newbet','friends','player','round'];
+const VIEWS=['feed','play','trips','trip','newtrip','board','newbet','leaders','friends','player','round'];
 function rememberPlace(){try{sessionStorage.setItem('t19-place',JSON.stringify({view:S.view,arg:S.arg,tripTabs:S.tripTabs,tripsFilter:S.tripsFilter||null}))}catch(e){}}
 try{
  const p=JSON.parse(sessionStorage.getItem('t19-place')||'null');
@@ -1092,9 +1194,14 @@ try{
 }catch(e){}
 async function postRound(){
  if(!draft||S.busy)return;
- const ix=myIndex(),t=calc(draft,ix),row=JSON.parse(JSON.stringify(toRow(draft,t,ix)));
- LS.set(OUTKEY,[...LS.get(OUTKEY,[]).filter(r=>r.id!==row.id),row]);
- (S.rounds[S.me]=S.rounds[S.me]||[]).unshift(fromRow({...row,created_at:new Date().toISOString(),_pending:true}));
+ const ix=myIndex(),t=calc(draft,ix),sc=draft.scorecards||[];
+ // Your round, plus one round per friend you scored (posted to their card, marked as entered by you).
+ const rows=[JSON.parse(JSON.stringify(toRow(draft,t,ix,{scorecards:sc})))];
+ (draft.others||[]).forEach(o=>{const oix=hcp(S.rounds[o.uid]).index,ot=calc(otherRound(o),oix);
+  rows.push(JSON.parse(JSON.stringify(toRow({...draft,id:o.id,holes:o.holes},ot,oix,{user_id:o.uid,entered_by:S.me,scorecards:sc}))))});
+ const ids=rows.map(r=>r.id);
+ LS.set(OUTKEY,[...LS.get(OUTKEY,[]).filter(r=>!ids.includes(r.id)),...rows]);
+ rows.forEach(row=>(S.rounds[row.user_id]=S.rounds[row.user_id]||[]).unshift(fromRow({...row,created_at:new Date().toISOString(),_pending:true})));
  draft=null;saveDraft();playView='start';cacheSave();
  go('feed');
  if(!navigator.onLine)return toast('Saved. It posts when you have signal.');
@@ -1168,6 +1275,10 @@ document.addEventListener('click',async e=>{
   if(error){fail(error,'Couldn’t post the comment.');return render()}
   (S.comments[d.id]=S.comments[d.id]||[]).push(c);const again=document.getElementById(d.input||'cbody');if(again)again.value='';return render();
  }
+ if(d.withsel){const s=new Set(S.withSel||[]);if(s.has(d.withsel))s.delete(d.withsel);else{if(s.size>=3)return toast('A group is you plus 3 friends.');s.add(d.withsel)}S.withSel=[...s];return render()}
+ if(d.lbper){S.lbPeriod=d.lbper;return render()}
+ if(d.lbcat){S.lbCat=d.lbcat;return render()}
+ if(d.viewphoto){S.photoView=d.viewphoto;return render()}
  if(d.tfilter){S.tripsFilter=d.tfilter;rememberPlace();return render()}
  if(d.ttab){S.tripTabs[S.arg]=d.ttab;rememberPlace();S.confirm=null;S.receiptView=null;return render()}
  if(d.expaid){S.exPaidBy=d.expaid;return render()}
@@ -1241,6 +1352,19 @@ document.addEventListener('click',async e=>{
   if(error)return fail(error,'Couldn’t open the receipt.');
   S.receiptView={url:data.signedUrl,pdf:/\.pdf$/i.test(d.path)};return render();
  }
+ if(a==='savevenmo'){
+  const v=$('#venmo').value.trim().replace(/^@/,'');
+  if(v&&!/^[A-Za-z0-9_-]{5,30}$/.test(v))return toast('Venmo usernames are 5–30 letters, numbers, - or _.');
+  const {error}=await sb.from('profile_private').upsert({id:S.me,venmo:v||null});
+  if(error)return fail(error,'Couldn’t save your Venmo.');
+  S.venmo=S.venmo||{};if(v)S.venmo[S.me]=v;else delete S.venmo[S.me];toast(v?'Venmo saved':'Venmo removed');return render();
+ }
+ if(a==='closephoto'){S.photoView=null;return render()}
+ if(a==='viewscorecard'){
+  const {data,error}=await sb.storage.from('scorecards').createSignedUrl(d.path,600);
+  if(error)return fail(error,'Couldn’t open the scorecard.');
+  const k=(S.arg||'').split('/')[1];S.receiptView={url:data.signedUrl,round:k};return render();
+ }
  if(a==='closereceipt'){S.receiptView=null;return render()}
  if(a==='delexpense'){
   S.confirm=null;const e=Object.values(S.expenses).flat().find(x=>x.id===d.id);
@@ -1278,27 +1402,32 @@ document.addEventListener('click',async e=>{
  if(a==='start'){
   const k=$('#course').value,c=COURSES[k],n=S.nsel,tee=$('#tee').value;
   const off=n==='back'?9:0,len=n==='18'?18:9;
+  const blank=()=>Array.from({length:len},(_,j)=>{const i=j+off;return c?{par:c.par[i],yds:c.tees[tee].yds[i],si:c.si[i],score:null,putts:null,sc:false,ud:false,beer:0,gb:0}:{par:4,si:i+1,score:null,putts:null,sc:false,ud:false,beer:0,gb:0}});
+  // Your round is draft.holes; each friend you're scoring is in draft.others with their own holes.
   draft={id:newId(),course:c?c.name:($('#cname').value.trim()||'My round'),tee:c?tee:'',rating:$('#rating').value.trim(),slope:$('#slope').value.trim(),date:$('#rdate').value||today(),nine:n==='18'?null:n,
-   holes:Array.from({length:len},(_,j)=>{const i=j+off;return c?{par:c.par[i],yds:c.tees[tee].yds[i],si:c.si[i],score:null,putts:null,sc:false,ud:false,beer:0,gb:0}:{par:4,si:i+1,score:null,putts:null,sc:false,ud:false,beer:0,gb:0}})};
-  hidx=0;playView='hole';saveDraft();return render();
+   holes:blank(),others:(S.withSel||[]).filter(isFriend).slice(0,3).map(uid=>({uid,id:newId(),holes:blank()})),
+   scorecards:c?[]:[S.scPaths&&S.scPaths.front,S.scPaths&&S.scPaths.back].filter(Boolean)};
+  S.withSel=[];S.scPaths=null;hidx=0;playView='hole';saveDraft();return render();
  }
  if(a==='post')return postRound();
  if(a==='discard'){draft=null;saveDraft();playView='start';S.confirm=null;return render()}
  if(a==='back'){playView='hole';S.confirm=null;return render()}
  if(a==='tosum'){playView='sum';return render()}
  if(!draft)return;
- const h=draft.holes[hidx];
+ // Buttons with data-p change a friend's hole; everything else changes yours.
+ const pl=d.p?(draft.others||[])[+d.p-1]:null,h=pl?pl.holes[hidx]:draft.holes[hidx];
+ const everyone=()=>[draft.holes,...(draft.others||[]).map(o=>o.holes)];
  // Putts are required before moving ahead (going back to earlier holes is fine).
  const needPutts=()=>{if(h.putts!=null)return false;S.puttsNag=true;render();toast('Enter putts for this hole first.');return true};
  if(d.go!=null){if(+d.go>hidx&&needPutts())return;S.puttsNag=false;hidx=+d.go}
- else if(d.par)h.par=+d.par;
+ else if(d.par)everyone().forEach(hs=>hs[hidx].par=+d.par); // par is the same for the whole group
  else if(d.sc)h.score=Math.max(1,(h.score==null?h.par:h.score)+ +d.sc);
  else if(d.pt){h.putts=h.putts==null?(+d.pt>0?1:0):Math.max(0,h.putts+ +d.pt);if(h.score==null)h.score=h.par}
  else if(d.tg){h[d.tg]=!h[d.tg];if(h.score==null)h.score=h.par}
  else if(d.beer)h.beer=Math.max(0,(h.beer||0)+ +d.beer);
  else if(d.gb)h.gb=Math.max(0,(h.gb||0)+ +d.gb);
  else if(a==='prev'){S.puttsNag=false;hidx--}
- else if(a==='next'){if(needPutts())return;S.puttsNag=false;if(h.score==null)h.score=h.par;if(hidx===draft.holes.length-1)playView='sum';else hidx++}
+ else if(a==='next'){if(needPutts())return;S.puttsNag=false;everyone().forEach(hs=>{if(hs[hidx].score==null)hs[hidx].score=hs[hidx].par});if(hidx===draft.holes.length-1)playView='sum';else hidx++}
  else return;
  saveDraft();render();
 });
@@ -1306,6 +1435,7 @@ document.addEventListener('change',e=>{
  const id=e.target.id;
  if(id==='course'){const v=e.target.value,t=$('#tee');t.innerHTML=v?teeOpts(v):'<option value="">n/a</option>';t.disabled=!v;$('#otherWrap').hidden=!!v;const rs=v?teeRS(v,t.value):{r:'',s:''};$('#rating').value=rs.r;$('#slope').value=rs.s;updateCH()}
  if(id==='bkind'){S.betKind=e.target.value;return render()}
+ if(id==='sc-front'||id==='sc-back'){const f=e.target.files&&e.target.files[0];if(f)uploadScorecard(id.slice(3),f);return}
  if(id==='avfile'){const f=e.target.files&&e.target.files[0];if(f)uploadPhoto(f);return}
  if(id==='exphoto'){const f=e.target.files&&e.target.files[0];if(f&&f.size>20e6)return toast('That file is too big. Try a smaller photo.');S.exFile=f||null;return render()}
  if(id==='tee'){const rs=teeRS($('#course').value,e.target.value);$('#rating').value=rs.r;$('#slope').value=rs.s;updateCH()}
