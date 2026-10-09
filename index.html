@@ -78,8 +78,30 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 .brandbar .idx{border-color:#E3B04B;background:transparent;width:56px;height:56px}
 .brandbar .idx b{color:#F3EAD3;font-size:18px}
 .brandbar .idx span{color:#CFC4A8}
-.ptitle{padding-block:14px 12px}
+.ptitle{padding-block:14px 12px;display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
 .ptitle h1{font-size:26px}
+.gear{flex:none;width:42px;height:42px;min-height:0;padding:0;border-radius:50%;display:grid;place-items:center;color:var(--ink)}
+.gear svg{width:22px;height:22px}
+.pname{display:block;font-size:20px;font-weight:800;line-height:1.2}
+/* Settings: grouped rows like a phone settings app */
+.setgroup{margin:0 0 18px}
+.sethead{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);margin:0 4px 6px}
+.setgroup>.setprof,.setgroup>.setrow{background:var(--card);border:1px solid var(--line);border-top-width:0;padding:12px 14px}
+.setgroup>:nth-child(2){border-top-width:1px;border-radius:14px 14px 0 0}
+.setgroup>:last-child{border-radius:0 0 14px 14px}
+.setgroup>:nth-child(2):last-child{border-radius:14px}
+.setprof{display:flex;align-items:center;gap:14px}
+.setrow{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:52px;width:100%;text-align:left;font:inherit;color:var(--ink);text-decoration:none}
+.setrow.col{flex-direction:column;align-items:stretch;gap:6px}
+.setlab{font-weight:600}
+.setval{color:var(--mute);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.setctl{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.setbtn{display:inline-flex;align-items:center;min-height:38px;padding:6px 14px;border-radius:99px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-weight:600;font-size:14px;cursor:pointer;margin:0}
+.setbtn.red{background:var(--red);border-color:var(--red);color:#fff}
+.red-t{color:var(--red)}
+.setlink{cursor:pointer}
+.setat{flex:none;font-weight:700;color:var(--mute)}
+button.setrow{border-radius:0}
 .idx{flex:none;width:62px;height:62px;border-radius:50%;border:2px solid var(--green);background:var(--card);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:0;min-height:0}
 .idx b{font-size:20px;font-weight:800;line-height:1}
 .idx span{font-size:9px;color:var(--mute);letter-spacing:.08em;text-transform:uppercase}

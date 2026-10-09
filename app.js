@@ -303,6 +303,7 @@ function render(){
  else if(S.view==='friends')html=friendsView();
  else if(S.view==='board')html=boardView();
  else if(S.view==='leaders')html=leadersView();
+ else if(S.view==='settings')html=settingsView();
  else if(S.view==='newbet')html=newBetView();
  else if(S.view==='trips')html=tripsView();
  else if(S.view==='newtrip')html=newTripView();
@@ -333,17 +334,18 @@ function renderTabs(){
  const hide=S.status==='auth'||S.status==='setup';
  const ready=S.status==='ready';
  const badges={friends:ready?incoming().length:0,board:ready?S.board.filter(needsMyPick).length:0};
- const cur=S.view==='player'&&(S.arg||S.me)===S.me?'me':(S.view==='trip'||S.view==='newtrip')?'trips':S.view==='newbet'?'board':(S.view==='round'||S.view==='player')?'':S.view;
+ const cur=S.view==='settings'||S.view==='player'&&(S.arg||S.me)===S.me?'me':(S.view==='trip'||S.view==='newtrip')?'trips':S.view==='newbet'?'board':(S.view==='round'||S.view==='player')?'':S.view;
  const t=[['feed','Feed'],['play',draft?'Round':'Play'],['trips','Trips'],['board','Board'],['leaders','Leaders'],['friends','Friends'],['me','Me']];
  $('#tabs').innerHTML=hide?'':`<div>${t.map(([k,l])=>`<button data-nav="${k}" ${cur===k?'aria-current="page"':''}><span class="ti">${TAB_ICONS[k]}</span><span class="tl">${l}</span>${badges[k]?`<span class="badge">${badges[k]}</span>`:''}</button>`).join('')}</div>`;
 }
 // Sandie logo: the splash screen's emblem (gold ring, flag, ball in the bunker).
 const LOGO=`<svg class="logo" viewBox="0 0 168 168" aria-hidden="true"><circle cx="84" cy="84" r="80" fill="none" stroke="#E3B04B" stroke-width="6"/><g transform="translate(32 24)"><line x1="34" y1="10" x2="34" y2="104" stroke="#F3EAD3" stroke-width="5" stroke-linecap="round"/><path d="M36 12 L92 28 L36 46 Z" fill="#E3B04B"/><path d="M8 104 C 14 92, 40 90, 60 94 C 76 97, 94 94, 98 102 C 102 112, 80 116, 54 116 C 28 116, 4 114, 8 104 Z" fill="#E2CF9F"/><circle cx="66" cy="98" r="9" fill="#F3EAD3"/></g></svg>`;
 // Every page starts with the brand bar (logo, wordmark, your index), then the page title.
-function header(title,eyebrow){
+// action: optional button shown at the right of the page title (e.g. the Settings gear).
+function header(title,eyebrow,action){
  const ready=S.status==='ready',sub=[eyebrow&&eyebrow!=='Sandie'?eyebrow:'',S.offline&&ready?'Offline':''].filter(Boolean).join(' · ');
  return `<header class="brandbar"><button class="brand" data-nav="feed" aria-label="Sandie, go to Feed">${LOGO}<span class="wm">Sandie<em>.</em></span></button>${ready?`<button class="idx" data-nav="me" aria-label="Your handicap index"><b>${fmtIdx(myIndex())}</b><span>Index</span></button>`:''}</header>
- <div class="ptitle">${sub?`<span class="eyebrow">${esc(sub)}</span>`:''}<h1>${esc(title)}</h1></div>`;
+ <div class="ptitle"><div style="min-width:0">${sub?`<span class="eyebrow">${esc(sub)}</span>`:''}<h1>${esc(title)}</h1></div>${action||''}</div>`;
 }
 // Avatar circle: the player's photo if they've added one, otherwise colored initials.
 // Only photos from this app's own avatars bucket are shown.
@@ -440,6 +442,41 @@ function roundItem(r,showWho=true){
   <div class="tags">${rateBadge(r)}<span class="tag ${r.t5>=Math.round(r.n/2)?'red':''}">Tiger 5 misses ${r.t5}</span>${r.diff!=null?`<span class="tag gold">Diff ${fmtDiff(r.diff)}</span>`:''}${extrasTags(r)}${r.pending?'<span class="tag red">Waiting to post</span>':''}</div></div>
   <div class="score"><b>${r.score}</b><span>${r.complete?rel(r.score-r.parPlayed):r.holesPlayed+' holes'}</span></div></button>`;
 }
+/* ---------- settings ---------- */
+const APP_VERSION='v26';
+const GEAR=`<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.86a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1Z"/></svg>`;
+// Settings: grouped like a phone's settings app. Profile, Payments, Account, About.
+function settingsView(){
+ const photo=photoOf(S.me),venmo=(S.venmo||{})[S.me]||'';
+ let h=header('Settings','',`<button class="link" data-nav="me">Done</button>`);
+ h+=`<div class="setgroup"><div class="sethead">Profile</div>
+  <div class="setprof">${photo?`<button class="plain photobtn" data-viewphoto="${esc(S.me)}" aria-label="View your photo full size">${av(S.me,'lg')}</button>`:av(S.me,'lg')}
+   <div style="min-width:0"><b class="pname">${esc(me().handle||'')}</b><span class="hint" style="margin:0">Friend code ${esc(me().friend_code||'')}</span></div></div>
+  <div class="setrow"><span class="setlab">Profile Photo</span><div class="setctl">
+   <label class="setbtn" for="avfile">${S.busy==='photo'?'Uploading…':photo?'Change':'Add Photo'}</label><input id="avfile" type="file" accept="image/*" hidden>
+   ${photo?(S.confirm==='rmphoto'?`<button class="setbtn red" data-act="rmphoto">Remove</button><button class="setbtn" data-act="cancelc">Keep</button>`:`<button class="setbtn red-t" data-act="ask" data-c="rmphoto">Remove</button>`):''}</div></div>
+  <div class="setrow col"><label class="setlab" for="newname">Display Name</label>
+   <div class="row"><input id="newname" maxlength="30" autocomplete="nickname" value="${esc(me().handle||'')}"><button class="setbtn" style="flex:none" data-act="savename">Save</button></div>
+   <p class="hint" style="margin:6px 0 0">How friends see you in feeds, trips and leaderboards.</p></div>
+ </div>`;
+ h+=`<div class="setgroup"><div class="sethead">Payments</div>
+  <div class="setrow col"><label class="setlab" for="venmo">Venmo Username</label>
+   <div class="row"><span class="setat">@</span><input id="venmo" maxlength="30" autocapitalize="none" autocomplete="off" placeholder="your-venmo" value="${esc(venmo)}"><button class="setbtn" style="flex:none" data-act="savevenmo">Save</button></div>
+   <p class="hint" style="margin:6px 0 0">Only your friends can see this. It shows on your profile and next to what people owe you.</p></div>
+ </div>`;
+ h+=`<div class="setgroup"><div class="sethead">Account</div>
+  <div class="setrow"><span class="setlab">Signed In As</span><span class="setval">${esc(S.email||'—')}</span></div>
+  ${S.confirm==='signout'?`<div class="setrow"><span class="setlab">Sign out of Sandie on this phone?</span><div class="setctl"><button class="setbtn red" data-act="signout">Sign Out</button><button class="setbtn" data-act="cancelc">Cancel</button></div></div>`
+   :`<button class="setrow setlink red-t" data-act="ask" data-c="signout"><span class="setlab">Sign Out</span><span aria-hidden="true">›</span></button>`}
+ </div>`;
+ h+=`<div class="setgroup"><div class="sethead">About</div>
+  <div class="setrow"><span class="setlab">App</span><span class="setval">Sandie · ${esc(APP_VERSION)}</span></div>
+  <a class="setrow setlink" href="https://opengolfapi.org/attribution" target="_blank" rel="noopener"><span class="setlab">Course Data</span><span class="setval">OpenGolfAPI ›</span></a>
+ </div>`;
+ if(S.photoView===S.me&&photo)h+=`<div class="overlay photo-ov" role="dialog" aria-label="Profile photo"><div class="row" style="flex:none"><b style="color:#fff">You</b><button data-act="closephoto" style="flex:none">Close</button></div><img src="${esc(photo)}" alt="Your profile photo"></div>`;
+ return h;
+}
+
 /* ---------- leaderboard ---------- */
 // Every category ranks you and your friends over the chosen period.
 // low:true means the smallest number leads. Values of null mean "not enough rounds".
@@ -550,15 +587,9 @@ function playerView(id){
  const mineView=id===S.me;
  if(!mineView&&!isFriend(id))return header(handle(id),'Player')+`<div class="card empty"><b>Scores Are Shared Between Friends</b>Add ${esc(handle(id))} as a friend to see all their rounds.<div style="margin-top:14px">${friendAction(id,'Add Friend')}</div></div>`;
  const rounds=S.rounds[id]||[],x=hcp(rounds);
- let h=header(mineView?'Your Card':handle(id),mineView?'Sandie':'Friend');
- if(mineView){
-  h+=S.editName?`<div class="card"><label for="newname">Your name in the app</label><input id="newname" maxlength="30" value="${esc(me().handle||'')}"><div class="row" style="margin-top:10px"><button class="primary" data-act="savename">Save</button><button data-act="cancelname">Cancel</button></div></div>`
-   :`<p class="sub">Playing as <b>${esc(me().handle||'')}</b> · <button class="link" data-act="editname">Change Name</button> · <button class="link" data-act="signout">Sign Out</button></p>`;
- }
- // Profile photo: big circle; on your own card, buttons to add, change or remove it.
- h+=`<div class="phead">${photoOf(id)?`<button class="plain photobtn" data-viewphoto="${esc(id)}" aria-label="View ${esc(mineView?'your':handle(id)+'’s')} photo full size">${av(id,'lg')}</button>`:av(id,'lg')}${mineView?`<div><label class="filebtn" for="avfile">${S.busy==='photo'?'Uploading…':photoOf(id)?'Change Photo':'Add a Photo'}</label><input id="avfile" type="file" accept="image/*" hidden>${photoOf(id)?`<button class="link" data-act="rmphoto">Remove Photo</button>`:''}<p class="hint" style="margin:6px 0 0">Shows next to your name for your friends.</p></div>`:`<div><p class="hint" style="margin:0">${(S.rounds[id]||[]).length} rounds posted</p>${venmoLink(id)?`<p style="margin:6px 0 0">${venmoLink(id)}</p>`:''}</div>`}</div>`;
- // Venmo handle: only you and your friends can see it.
- if(mineView)h+=`<div class="card"><label for="venmo" style="margin-top:0">Venmo Username</label><div class="row"><span style="flex:none;font-weight:700;color:var(--mute)">@</span><input id="venmo" maxlength="30" autocapitalize="none" autocomplete="off" placeholder="your-venmo" value="${esc((S.venmo||{})[S.me]||'')}"><button style="flex:none" data-act="savevenmo">Save</button></div><p class="hint">Only your friends can see this. It shows on your profile and next to what people owe you.</p></div>`;
+ let h=header(mineView?'Your Card':handle(id),mineView?'Sandie':'Friend',mineView?`<button class="gear" data-nav="settings" aria-label="Settings">${GEAR}</button>`:'');
+ // Profile photo (tap to see it full size); your photo, name and Venmo are edited in Settings.
+ h+=`<div class="phead">${photoOf(id)?`<button class="plain photobtn" data-viewphoto="${esc(id)}" aria-label="View ${esc(mineView?'your':handle(id)+'’s')} photo full size">${av(id,'lg')}</button>`:av(id,'lg')}${mineView?`<div><b class="pname">${esc(me().handle||'')}</b><p class="hint" style="margin:2px 0 0">${rounds.length} rounds posted · Friend code ${esc(me().friend_code||'')}</p>${venmoLink(S.me)?`<p style="margin:6px 0 0">${venmoLink(S.me)}</p>`:''}</div>`:`<div><p class="hint" style="margin:0">${(S.rounds[id]||[]).length} rounds posted</p>${venmoLink(id)?`<p style="margin:6px 0 0">${venmoLink(id)}</p>`:''}</div>`}</div>`;
  const complete=rounds.filter(r=>r.complete),holes=complete.reduce((a,r)=>a+r.n,0);
  const t5per18=holes?complete.reduce((a,r)=>a+r.t5,0)/holes*18:null;
  const f18=complete.filter(r=>r.n===18);
@@ -1196,7 +1227,7 @@ function go(view,arg){
  rememberPlace();render();
 }
 // Refreshing keeps you on the same page (and trip section); a fresh launch starts on the Feed.
-const VIEWS=['feed','play','trips','trip','newtrip','board','newbet','leaders','friends','player','round'];
+const VIEWS=['feed','play','trips','trip','newtrip','board','newbet','leaders','settings','friends','player','round'];
 function rememberPlace(){try{sessionStorage.setItem('t19-place',JSON.stringify({view:S.view,arg:S.arg,tripTabs:S.tripTabs,tripsFilter:S.tripsFilter||null}))}catch(e){}}
 try{
  const p=JSON.parse(sessionStorage.getItem('t19-place')||'null');
@@ -1315,7 +1346,7 @@ document.addEventListener('click',async e=>{
    return render();
   }
   if(!data.session){toast('Account created, but email confirmation is on in Supabase. Turn off “Confirm email”, then sign in.');S.authStep='signin';return render()}
-  S.me=data.user.id;S.status='loading';render();return loadAll();
+  S.me=data.user.id;S.email=data.user.email||'';S.status='loading';render();return loadAll();
  }
  if(a==='join'){
   const v=$('#handle').value.trim();if(!v)return toast('Pick a name your friends will recognize.');
@@ -1324,7 +1355,7 @@ document.addEventListener('click',async e=>{
   S.busy=false;if(error){fail(error,'Couldn’t save your name.');return render()}
   S.status='loading';return loadAll();
  }
- if(a==='signout'){await sb.auth.signOut();LS.set(CACHEKEY,null);location.reload();return}
+ if(a==='signout'){await sb.auth.signOut();LS.set(CACHEKEY,null);try{sessionStorage.removeItem('t19-place')}catch(e){}location.reload();return}
  if(a==='editname'){S.editName=true;return render()}
  if(a==='cancelname'){S.editName=false;return render()}
  if(a==='savename'){
@@ -1349,7 +1380,7 @@ document.addEventListener('click',async e=>{
   toast('Round deleted');go('feed');return loadAll();
  }
  if(a==='import')return importOld();
- if(a==='rmphoto'){
+ if(a==='rmphoto'){S.confirm=null;
   const old=photoOf(S.me);const {error}=await sb.from('profiles').update({avatar_url:null}).eq('id',S.me);
   if(error)return fail(error,'Couldn’t remove your photo.');
   S.profiles[S.me]={...me(),avatar_url:null};if(old)sb.storage.from('avatars').remove([old.slice(AVATAR_PREFIX.length)]).catch(()=>{});
@@ -1480,7 +1511,7 @@ if('serviceWorker' in navigator&&location.protocol==='https:'){
  sb.auth.onAuthStateChange((ev)=>{if(ev==='SIGNED_OUT'){S.me=null;S.status='auth';render()}});
  const {data:{session}}=await sb.auth.getSession();
  if(!session){S.status='auth';return render()}
- S.me=session.user.id;
+ S.me=session.user.id;S.email=session.user.email||'';
  if(cacheLoad()){S.status='ready';addPendingLocal();render()}
  loadAll();
 })();
