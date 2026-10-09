@@ -24,6 +24,13 @@ create table if not exists public.board_picks (
   created_at  timestamptz not null default now(),
   primary key (bet_id, user_id)
 );
+-- How much this person put on their pick. board_bets.stake is just the suggested amount.
+alter table public.board_picks add column if not exists amount numeric(8,2) not null default 0;
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'board_picks_amount_check') then
+    alter table public.board_picks add constraint board_picks_amount_check check (amount >= 0 and amount < 100000);
+  end if;
+end $$;
 
 create or replace function private.has_board_pick(b uuid, u uuid)
 returns boolean language sql stable security definer set search_path = public as $$

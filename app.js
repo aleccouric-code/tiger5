@@ -227,7 +227,7 @@ async function loadBoard(profiles){
  try{
   const {data:bs,error}=await sb.from('board_bets').select('*').order('created_at',{ascending:false}).limit(200);if(error)throw error;
   const ids=(bs||[]).map(b=>b.id);let picks=[];
-  if(ids.length){const r=await sb.from('board_picks').select('bet_id,user_id,option').in('bet_id',ids);if(r.error)throw r.error;picks=r.data||[]}
+  if(ids.length){const r=await sb.from('board_picks').select('bet_id,user_id,option,amount').in('bet_id',ids);if(r.error)throw r.error;picks=r.data||[]}
   const by={};picks.forEach(p=>(by[p.bet_id]=by[p.bet_id]||[]).push(p));
   S.board=bs||[];S.boardPicks=by;S.boardOk=true;
   const need=[...new Set([...S.board.map(b=>b.created_by),...picks.map(p=>p.user_id)])].filter(u=>!profiles[u]);
@@ -389,6 +389,11 @@ function feedCard(r){
   <button data-like="${esc(r.id)}" aria-pressed="${likes.includes(S.me)}">👍 <span>${likes.length?likes.length+' ':''}Like${likes.length===1||!likes.length?'':'s'}</span></button>
   <button data-comments="${key}">💬 <span>${coms.length?coms.length+' ':''}Comment${coms.length===1||!coms.length?'':'s'}</span></button>
   ${mine?'':`<button data-attest="${esc(r.id)}" aria-pressed="${att.includes(S.me)}">✋ <span>${att.includes(S.me)?'Attested':'Attest'}</span></button>`}
+ </div>
+ <div class="fcomments">
+  ${coms.length>3?`<button class="link" data-comments="${key}">View all ${coms.length} comments</button>`:''}
+  ${coms.slice(-3).map(c=>`<p><b>${esc(c.user_id===S.me?'You':handle(c.user_id))}</b> ${esc(c.body)}</p>`).join('')}
+  <div class="row"><input id="fc-${esc(r.id)}" maxlength="500" placeholder="Add a comment…" autocomplete="off" aria-label="Comment on this round"><button style="flex:none" data-act="postcomment" data-id="${esc(r.id)}" data-input="fc-${esc(r.id)}">Post</button></div>
  </div>`}
  </article>`;
 }
@@ -483,6 +488,9 @@ function playerView(id){
  const t5per18=holes?complete.reduce((a,r)=>a+r.t5,0)/holes*18:null;
  const f18=complete.filter(r=>r.n===18);
  h+=`<div class="card big"><div><b>${fmtIdx(x.index)}</b><span>Handicap index</span></div><div><b>${f18.length?Math.round(f18.reduce((a,r)=>a+r.score,0)/f18.length):'—'}</b><span>Avg 18-hole score</span></div><div><b>${t5per18==null?'—':t5per18.toFixed(1)}</b><span>Tiger 5 misses per 18</span></div></div>`;
+ // Rating from Tiger 5 misses per 18: under 3 God Tier, 3–5 Goated, above 5 Average.
+ if(t5per18!=null){const v=Math.round(t5per18*10)/10,[label,cls,emo]=v<3?['God Tier','pos','👑']:v<=5?['Goated','pos','🐐']:['Average','','😐'];
+  h+=`<div class="card rating"><span class="rl">Rating</span><b class="${cls}">${emo} ${label}</b><span class="hint" style="margin:0">${v.toFixed(1)} Tiger 5 misses per 18 · under 3 God Tier, 3–5 Goated, above 5 Average</span></div>`;}
  if(x.index==null)h+=`<p class="sub">${x.rs.length?`${x.need} more rated round${x.need>1?'s':''} until ${mineView?'your':'their'} index is set.`:'Post 3 complete rounds with a course rating and slope to get an index.'}</p>`;
  if(x.rs.length)h+=`<div class="card"><b>Last ${x.rs.length} differentials</b>${diffChart(x)}<p class="hint" style="margin-top:4px">${x.index!=null?`Green bars are the ${x.take} lowest; they set the index (dashed line).`:'Differentials so far.'}</p></div>`;
  if(holes){
@@ -653,7 +661,8 @@ function tripView(id){
  // One section at a time, picked from a row of buttons (remembered per trip).
  const tab=S.tripTabs[t.id]||'bets',exN=(S.expenses[t.id]||[]).length;
  const rs=mem.flatMap(u=>tripRounds(t,u)).sort((a,b)=>b.date.localeCompare(a.date)||(b.at||0)-(a.at||0));
- const tabs=[['bets','Bets',bets.length],['receipts','Receipts',exN],['rounds','Rounds',rs.length],['players','Players',mem.length]];
+ const beersTot=mem.reduce((a,u)=>a+allTripRounds(t,u).reduce((x,r)=>x+holeSum(r,'beer'),0),0),gbTot=mem.reduce((a,u)=>a+allTripRounds(t,u).reduce((x,r)=>x+holeSum(r,'gb'),0),0);
+ const tabs=[['bets','Bets',bets.length],['receipts','Receipts',exN],['beers','Beers 🍺',beersTot],['gb','GB 💨',gbTot],['rounds','Rounds',rs.length],['players','Players',mem.length]];
  // Ending a trip: the organizer can end it early (later rounds stop counting and settle-up is final).
  if(st==='done')h+=`<div class="card note item" style="margin-bottom:12px"><div class="mid"><b>Trip completed</b><span>${t.ended_at?'Ended '+fmtDate(t.end_date)+'. ':''}Bets and settle-ups are final.</span></div>${owner&&t.ended_at?`<button data-act="reopentrip">Reopen</button>`:''}</div>`;
  else if(owner)h+=S.confirm==='endtrip'?`<div class="card note" style="margin-bottom:12px"><p style="margin-top:0">End the trip now? Rounds posted after today won’t count toward bets, and settle-ups become final.</p><div class="row"><button class="danger" data-act="endtrip">End trip</button><button data-act="cancelc">Not yet</button></div></div>`
@@ -691,6 +700,8 @@ function tripView(id){
  }
 
  if(tab==='receipts')h+=expensesSection(t,mem,who);
+ if(tab==='beers')h+=extrasBoard(t,'beer','🍺','beer','beers');
+ if(tab==='gb')h+=extrasBoard(t,'gb','💨','GB','GB');
 
  // Bets settle up at the bottom of Bets; receipts have their own under Receipts.
  if(tab==='bets'&&bets.some(b=>+b.stake>0))h+=settleCard(t,settleBets(t),st==='done'?'Settle up bets':'Settle up bets if the trip ended now','Bets only. Receipts settle up separately under Receipts.');
@@ -715,6 +726,18 @@ function tripView(id){
  return h;
 }
 
+// Every round posted during the trip, finished or not (for beer and GB totals).
+const allTripRounds=(t,uid)=>(S.rounds[uid]||[]).filter(r=>r.date>=t.start_date&&r.date<=t.end_date);
+// Trip leaderboard for a per-hole extra (beers or GB): totals per player, most first.
+function extrasBoard(t,key,emoji,one,many){
+ const mem=S.tripMembers[t.id]||[],who=(u)=>u===S.me?'You':handle(u);
+ const rows=mem.map(u=>{const rs=allTripRounds(t,u);return{u,n:rs.length,tot:rs.reduce((a,r)=>a+holeSum(r,key),0)}}).sort((a,b)=>b.tot-a.tot||b.n-a.n);
+ const grand=rows.reduce((a,r)=>a+r.tot,0),top=rows.length&&rows[0].tot?rows[0].tot:null;
+ let h=`<div class="card big" style="margin-bottom:10px"><div><b>${emoji} ${grand}</b><span>${grand===1?one:many} on the trip</span></div></div>`;
+ h+=`<div class="card"><table><thead><tr><th>Player</th><th class="n">Rounds</th><th class="n">Per round</th><th class="n">Total</th></tr></thead><tbody>${rows.map(r=>`<tr class="${top!=null&&r.tot===top?'lead':''}"><td>${esc(who(r.u))}</td><td class="n" style="font-weight:400;color:var(--mute)">${r.n}</td><td class="n" style="font-weight:400">${r.n?(r.tot/r.n).toFixed(1):'—'}</td><td class="n">${r.tot}</td></tr>`).join('')}</tbody></table>
+ <p class="hint">Counted from the ${emoji} ${many} entered hole by hole on rounds posted ${fmtRange(t)}.</p></div>`;
+ return h;
+}
 function settleCard(t,sv,title,note){
  const mem=S.tripMembers[t.id]||[],who=(u)=>u===S.me?'You':handle(u);
  const sgn=(v)=>{v=Math.round((v||0)*100)/100;return `<span class="${v>0?'pos':v<0?'neg':''}">${v>0?'+':v<0?'−':''}${fmtMoney(v)}</span>`};
@@ -831,13 +854,21 @@ async function toggleWinner(betId,u){
 // Bets posted to friends for later. Everyone who picked the wrong option pays
 // their stake, split evenly among those who picked right. Tracking only.
 const needsMyPick=(b)=>b.status==='open'&&b.created_by!==S.me&&!(S.boardPicks[b.id]||[]).some(p=>p.user_id===S.me);
+// Everyone bets their own amount. Losers pay what they bet; that money is split
+// among the winners in proportion to how much each winner bet (evenly if winners bet $0).
+const pickAmt=(p)=>+p.amount||0;
+const potOf=(b)=>(S.boardPicks[b.id]||[]).reduce((a,p)=>a+pickAmt(p),0);
 function boardPayout(b){
  if(b.status!=='settled'||b.winning_option==null)return null;
- const picks=S.boardPicks[b.id]||[],stake=+b.stake||0;
- const win=picks.filter(p=>p.option===b.winning_option).map(p=>p.user_id),lose=picks.filter(p=>p.option!==b.winning_option).map(p=>p.user_id);
- const pays=[];
- if(stake&&win.length&&lose.length){const share=Math.round(stake/win.length*100)/100;lose.forEach(l=>win.forEach(w=>pays.push({from:l,to:w,amt:share})))}
- return{win,lose,pays};
+ const picks=S.boardPicks[b.id]||[];
+ const win=picks.filter(p=>p.option===b.winning_option),lose=picks.filter(p=>p.option!==b.winning_option);
+ const W=win.reduce((a,p)=>a+pickAmt(p),0),pays=[];
+ if(win.length)lose.forEach(l=>{
+  if(!pickAmt(l))return;
+  const shares=W?win.map(w=>pickAmt(l)*pickAmt(w)/W):win.map(()=>pickAmt(l)/win.length);
+  win.forEach((w,i)=>{const amt=Math.round(shares[i]*100)/100;if(amt>=0.01)pays.push({from:l.user_id,to:w.user_id,amt})});
+ });
+ return{win:win.map(p=>p.user_id),lose:lose.map(p=>p.user_id),pays};
 }
 // What each person owes you (positive) or you owe them (negative), across all settled bets.
 function boardBalances(){
@@ -865,21 +896,27 @@ function boardView(){
  return h;
 }
 function boardCard(b){
- const picks=S.boardPicks[b.id]||[],mine=picks.find(p=>p.user_id===S.me),owner=b.created_by===S.me,stake=+b.stake||0,open=b.status==='open';
+ const picks=S.boardPicks[b.id]||[],mine=picks.find(p=>p.user_id===S.me),owner=b.created_by===S.me,stake=+b.stake||0,open=b.status==='open',pot=potOf(b);
  const who=(u)=>u===S.me?'You':handle(u);
- let h=`<div class="card${needsMyPick(b)?' note':''}"><div class="bet-head"><b>${esc(b.title)}</b><span class="money">${stake?fmtMoney(stake)+' each':'Bragging rights'}</span></div>
- <p class="hint" style="margin:2px 0 6px">Posted by ${esc(who(b.created_by))}${b.settle_by?' · settles by '+fmtDate(b.settle_by):''}${needsMyPick(b)?' · <b>waiting for your pick</b>':''}</p>`;
+ let h=`<div class="card${needsMyPick(b)?' note':''}"><div class="bet-head"><b>${esc(b.title)}</b><span class="money">${pot?fmtMoney(pot)+' pot':'No money in yet'}</span></div>
+ <p class="hint" style="margin:2px 0 6px">Posted by ${esc(who(b.created_by))}${stake?' · suggested '+fmtMoney(stake):''}${b.settle_by?' · settles by '+fmtDate(b.settle_by):''}${needsMyPick(b)?' · <b>waiting for your pick</b>':''}</p>`;
  if(b.details)h+=`<p style="margin:0 0 6px">${esc(b.details)}</p>`;
+ if(open&&S.settling!==b.id){
+  // Your amount: typed once, then tap an option to place it (or update it).
+  const amtVal=mine?pickAmt(mine):(stake||'');
+  h+=`<div class="row" style="margin:4px 0 6px"><label for="bamt-${esc(b.id)}" style="margin:0;flex:none">Your bet $</label><input id="bamt-${esc(b.id)}" inputmode="decimal" value="${amtVal}" placeholder="0" style="max-width:110px">${mine?`<button style="flex:none" data-act="bbamount" data-id="${esc(b.id)}">Update</button>`:''}</div>`;
+ }
  (b.options||[]).forEach((o,i)=>{
   const ps=picks.filter(p=>p.option===i),won=b.status==='settled'&&b.winning_option===i,mineHere=mine&&mine.option===i;
+  const tot=ps.reduce((a,p)=>a+pickAmt(p),0);
   const action=S.settling===b.id?`<button class="primary" data-act="settlebet" data-id="${esc(b.id)}" data-opt="${i}">Won</button>`
    :open?`<button data-pickbet="${esc(b.id)}" data-opt="${i}" aria-pressed="${!!mineHere}">${mineHere?'Your pick':'Pick'}</button>`:'';
-  h+=`<div class="opt${won?' won':''}"><div class="mid"><b>${esc(o)}${won?' ✓':''}</b><span>${ps.length?esc(ps.map(p=>who(p.user_id)).join(', ')):'No picks'}</span></div>${action}</div>`;
+  h+=`<div class="opt${won?' won':''}"><div class="mid"><b>${esc(o)}${won?' ✓':''}${tot?` <span class="money" style="font-size:14px;color:var(--mute)">${fmtMoney(tot)}</span>`:''}</b><span>${ps.length?esc(ps.map(p=>who(p.user_id)+(pickAmt(p)?' '+fmtMoney(pickAmt(p)):'')).join(', ')):'No picks'}</span></div>${action}</div>`;
  });
  if(open&&mine)h+=`<p style="margin:6px 0 0"><button class="link" data-act="unpick" data-id="${esc(b.id)}">Withdraw my pick</button></p>`;
  const pay=boardPayout(b);
  if(pay)h+=pay.pays.length?`<table style="margin-top:8px"><tbody>${pay.pays.map(x=>`<tr><td>${esc(who(x.from))} pay${x.from===S.me?'':'s'} ${esc(x.to===S.me?'you':handle(x.to))}</td><td class="n">${fmtMoney(x.amt)}</td></tr>`).join('')}</tbody></table>`
-  :`<p class="hint">No money changes hands${stake?' (nobody picked the losing side, or nobody picked the winner)':''}.</p>`;
+  :`<p class="hint">No money changes hands${pot?' (nobody picked the losing side, or nobody picked the winner)':''}.</p>`;
  if(owner){
   const btn=(act,label,cls)=>`<button ${cls?`class="${cls}"`:''} data-act="${act}" data-id="${esc(b.id)}">${label}</button>`;
   let c='';
@@ -900,9 +937,10 @@ function newBetView(){
  <label>Options</label>${Array.from({length:n},(_,i)=>`<input id="bbopt${i}" maxlength="40" style="margin-bottom:6px" value="${i===0?'Yes':i===1?'No':''}" placeholder="Option ${i+1}">`).join('')}
  <div class="row">${n<6?'<button data-act="bbmore">+ Add option</button>':''}${n>2?'<button data-act="bbless">Remove last</button>':''}</div>
  <p class="hint">For “who wins” bets, use player names as the options.</p>
- <div class="row"><div><label for="bbstake">Stake per player ($)</label><input id="bbstake" inputmode="decimal" placeholder="0"></div><div><label for="bbdate">Settle by (optional)</label><input id="bbdate" type="date" min="${today()}"></div></div>
+ <div class="row"><div><label for="bbstake">Suggested bet ($, optional)</label><input id="bbstake" inputmode="decimal" placeholder="e.g. 20"></div><div><label for="bbdate">Settle by (optional)</label><input id="bbdate" type="date" min="${today()}"></div></div>
+ <p class="hint">Everyone picks an option and chooses how much to put on it. The suggested amount is just the starting number.</p>
  <button class="primary wide" style="margin-top:14px" data-act="postbet" ${S.busy?'disabled':''}>Post to the board</button></div>
- <p class="sub">Your friends see it and pick an option. Once it’s decided, you mark the winner: everyone who picked wrong pays their stake, split evenly among those who picked right. The app only keeps track.</p>`;
+ <p class="sub">Once it’s decided, you mark the winner. Everyone who picked wrong pays what they bet, split among those who picked right in proportion to how much each of them bet. The app only keeps track.</p>`;
 }
 async function postBoardBet(){
  const title=$('#bbtitle').value.trim(),details=$('#bbdetails').value.trim();
@@ -923,11 +961,15 @@ async function boardUpdate(id,patch,msg){
  if(error)return fail(error,'Couldn’t update the bet.');
  if(msg)toast(msg);loadAll();
 }
+// Places (or moves / re-sizes) your pick using the amount typed on that bet's card.
 async function pickBoard(id,opt){
+ const el=document.getElementById('bamt-'+id),raw=el?el.value.replace(/[$,\s]/g,''):'',amount=raw?Math.round(+raw*100)/100:0;
+ if(!(amount>=0)||amount>=100000)return toast('Enter your bet in dollars, or 0.');
  const list=S.boardPicks[id]=(S.boardPicks[id]||[]).filter(p=>p.user_id!==S.me);
- list.push({bet_id:id,user_id:S.me,option:opt});render();
- const {error}=await sb.from('board_picks').upsert({bet_id:id,user_id:S.me,option:opt});
+ list.push({bet_id:id,user_id:S.me,option:opt,amount});render();
+ const {error}=await sb.from('board_picks').upsert({bet_id:id,user_id:S.me,option:opt,amount});
  if(error){fail(error,'Your pick didn’t save. The bet may have just been locked.');loadAll()}
+ else toast(amount?'You put '+fmtMoney(amount)+' on it':'Pick saved');
 }
 
 /* ---------- play ---------- */
@@ -1074,13 +1116,13 @@ document.addEventListener('click',async e=>{
   if(error){fail(error,'Couldn’t delete the comment.');loadAll()}return;
  }
  if(a==='postcomment'){
-  const body=$('#cbody').value.trim();if(!body)return toast('Write a comment first.');
+  const inp=document.getElementById(d.input||'cbody'),body=inp?inp.value.trim():'';if(!body)return toast('Write a comment first.');
   const c={id:newId(),round_id:d.id,user_id:S.me,body,created_at:new Date().toISOString()};
   S.busy=true;render();
   const {error}=await sb.from('round_comments').insert({id:c.id,round_id:c.round_id,user_id:c.user_id,body});
   S.busy=false;
   if(error){fail(error,'Couldn’t post the comment.');return render()}
-  (S.comments[d.id]=S.comments[d.id]||[]).push(c);$('#cbody').value='';return render();
+  (S.comments[d.id]=S.comments[d.id]||[]).push(c);const again=document.getElementById(d.input||'cbody');if(again)again.value='';return render();
  }
  if(d.tfilter){S.tripsFilter=d.tfilter;return render()}
  if(d.ttab){S.tripTabs[S.arg]=d.ttab;S.confirm=null;S.receiptView=null;return render()}
@@ -1156,6 +1198,7 @@ document.addEventListener('click',async e=>{
   if(e&&e.receipt_path)sb.storage.from('receipts').remove([e.receipt_path]).catch(()=>{});
   toast('Receipt deleted');return loadAll();
  }
+ if(a==='bbamount'){const p=(S.boardPicks[d.id]||[]).find(x=>x.user_id===S.me);if(p)return pickBoard(d.id,p.option);return}
  if(a==='postbet')return postBoardBet();
  if(a==='bbmore'||a==='bbless'){S.bbOpts=Math.max(2,Math.min(6,S.bbOpts+(a==='bbmore'?1:-1)));return render()}
  if(a==='unpick'){S.boardPicks[d.id]=(S.boardPicks[d.id]||[]).filter(p=>p.user_id!==S.me);render();const {error}=await sb.from('board_picks').delete().eq('bet_id',d.id).eq('user_id',S.me);if(error)fail(error,'Couldn’t withdraw your pick.');return loadAll()}
@@ -1221,6 +1264,7 @@ document.addEventListener('keydown',e=>{
  if(e.key!=='Enter')return;
  const auth=S.authStep==='signup'?'signup':'signin';
  const map={email:auth,pw:auth,pw2:auth,handle:'join',fsearch:'search',newname:'savename',cbody:'postcomment'};
+ if(/^fc-/.test(e.target.id)){e.preventDefault();const b=e.target.parentElement.querySelector('[data-act="postcomment"]');if(b)b.click();return}
  const act=map[e.target.id];if(act){e.preventDefault();const b=document.querySelector(`[data-act="${act}"]`);if(b)b.click()}
 });
 

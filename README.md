@@ -59,7 +59,7 @@ Each posted round shows as a card with Score, Putts, Tiger 5 and Differential ci
 
 Post a bet for later ("Jon breaks 80 at Whiskey Creek") with 2–6 options (Yes/No by default, or player names), a stake per player, and an optional settle-by date. Your friends see it and pick an option while it's open. The poster can lock picks, mark the winning option, undo a result, or call the bet off.
 
-When a bet is settled, everyone who picked a losing option pays their stake, split evenly among those who picked the winner. **Your board balance** totals what each person owes you or you owe them across all settled bets. Tracking only; the app never moves money.
+Each person chooses how much to put on their pick (the poster's amount is only a suggestion). When a bet is settled, everyone who picked a losing option pays what they bet, split among those who picked the winner in proportion to how much each winner bet. **Your board balance** totals what each person owes you or you owe them across all settled bets. Tracking only; the app never moves money.
 
 ## Inviting friends
 On **Friends → Find friends**, search by part of a name (3+ letters), a full email address, or a 6-letter friend code, then tap **Add**. Searches never show anyone's email.
