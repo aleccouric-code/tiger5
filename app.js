@@ -383,7 +383,7 @@ function allFeedRounds(){
 }
 // Per-hole extras (beers, rips; stored as "gb") added up for a round.
 const holeSum=(r,k)=>(r.holes||[]).reduce((a,h)=>a+(+h[k]||0),0);
-const extrasTags=(r)=>{const b=holeSum(r,'beer'),g=holeSum(r,'gb'),c=holeSum(r,'club'),m=holeSum(r,'mush');return (b?`<span class="tag gold">🍺 ${b}</span>`:'')+(g?`<span class="tag">💨 ${g}</span>`:'')+(c?`<span class="tag red" title="Thrown clubs">🪃 ${c}</span>`:'')+(m?`<span class="tag" title="Mushrooms">🍄 ${m}</span>`:'')};
+const extrasTags=(r)=>{const b=holeSum(r,'beer'),sh=holeSum(r,'shot'),g=holeSum(r,'gb'),c=holeSum(r,'club'),m=holeSum(r,'mush');return (b?`<span class="tag gold">🍺 ${b}</span>`:'')+(sh?`<span class="tag gold" title="Shotguns">💥 ${sh}</span>`:'')+(g?`<span class="tag">💨 ${g}</span>`:'')+(c?`<span class="tag red" title="Thrown clubs">🪃 ${c}</span>`:'')+(m?`<span class="tag" title="Mushrooms">🍄 ${m}</span>`:'')};
 // Round rating from Tiger 5 misses. Trophies: 0 → three, 1 → two, 2–3 → one
 // (finished rounds only, so a few clean holes don't earn them).
 // Poo: 4–7 → one, 8–10 → two, 11+ → three.
@@ -440,7 +440,7 @@ function roundItem(r,showWho=true){
   <div class="score"><b>${r.score}</b><span>${r.complete?rel(r.score-r.parPlayed):r.holesPlayed+' holes'}</span></div></button>`;
 }
 /* ---------- settings ---------- */
-const APP_VERSION='v30';
+const APP_VERSION='v31';
 const GEAR=`<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.86a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1Z"/></svg>`;
 // Settings: grouped like a phone's settings app. Profile, Payments, Account, About.
 function settingsView(){
@@ -497,6 +497,7 @@ const LB_CATS=[
  {k:'trophy',label:'🏆 Trophy Rounds',val:rs=>rs.filter(r=>r.complete&&r.t5<=3).length,note:'Finished rounds with 3 or fewer Tiger 5 misses.'},
  {k:'poo',label:'💩 Poo Rounds',val:rs=>rs.filter(r=>r.t5>=4).length,note:'Rounds with 4 or more Tiger 5 misses. Wall of shame.'},
  {k:'beer',label:'🍺 Beers',val:rs=>rs.reduce((a,r)=>a+holeSum(r,'beer'),0),note:'Beers logged on the course.'},
+ {k:'shot',label:'💥 Shotguns',val:rs=>rs.reduce((a,r)=>a+holeSum(r,'shot'),0),note:'Beers shotgunned. Counted inside the beer total too.'},
  {k:'gb',label:'💨 Rips',val:rs=>rs.reduce((a,r)=>a+holeSum(r,'gb'),0),note:'Rips logged on the course.'},
  {k:'club',label:'🪃 Thrown Clubs',val:rs=>rs.reduce((a,r)=>a+holeSum(r,'club'),0),note:'Clubs thrown. Wall of shame.'},
  {k:'mush',label:'🍄 Mushrooms',val:rs=>rs.reduce((a,r)=>a+holeSum(r,'mush'),0),note:'Mushrooms logged on the course.'},
@@ -640,6 +641,7 @@ function roundView(key){
   <tr><td>Putts</td>${sl.map(h=>`<td>${played(h)&&h.putts!=null?h.putts:'–'}</td>`).join('')}<td>${sl.some(h=>played(h)&&h.putts!=null)?sum(h=>played(h)?h.putts:0):'–'}</td></tr>
   ${holeSum(r,'beer')?`<tr><td>Beers</td>${sl.map(h=>`<td>${h.beer||''}</td>`).join('')}<td>${sum(h=>h.beer)}</td></tr>`:''}
   ${holeSum(r,'gb')?`<tr><td>Rips 💨</td>${sl.map(h=>`<td>${h.gb||''}</td>`).join('')}<td>${sum(h=>h.gb)}</td></tr>`:''}
+  ${holeSum(r,'shot')?`<tr><td>Shotgun 💥</td>${sl.map(h=>`<td>${h.shot||''}</td>`).join('')}<td>${sum(h=>h.shot)}</td></tr>`:''}
   ${holeSum(r,'club')?`<tr><td>Thrown 🪃</td>${sl.map(h=>`<td>${h.club||''}</td>`).join('')}<td>${sum(h=>h.club)}</td></tr>`:''}
   ${holeSum(r,'mush')?`<tr><td>Mush 🍄</td>${sl.map(h=>`<td>${h.mush||''}</td>`).join('')}<td>${sum(h=>h.mush)}</td></tr>`:''}</table></div>`};
  h+=`<div class="card">${rows(0,9)}${rows(9,18)}<p class="hint" style="margin:0">Red holes broke a Tiger 5 rule. Green holes were under par.</p></div>`;
@@ -1217,7 +1219,8 @@ function holeView(){
  <button class="toggle" data-tg="sc" aria-pressed="${h.sc}"><span>Approach with a scoring club (wedge or short iron)</span><b>${h.sc?'Yes':'No'}</b></button>
  <button class="toggle" data-tg="ud" aria-pressed="${h.ud}"><span>Missed an easy up-and-down</span><b>${h.ud?'Yes':'No'}</b></button>
  <div class="row" style="margin-top:4px;align-items:flex-start">
-  <div><label>Beers 🍺</label><div class="stepper sm"><button data-beer="-1" aria-label="One less beer">−</button><output>${h.beer||0}</output><button data-beer="1" aria-label="One more beer">+</button></div></div>
+  <div><label>Beers 🍺</label><div class="stepper sm"><button data-beer="-1" aria-label="One less beer">−</button><output>${h.beer||0}</output><button data-beer="1" aria-label="One more beer">+</button></div>
+   ${(h.beer||0)>0?`<div class="shotgun"><label>Shotguns 💥</label><div class="stepper xs"><button data-shot="-1" aria-label="One less shotgun">−</button><output>${h.shot||0}</output><button data-shot="1" aria-label="One more shotgun">+</button></div></div>`:''}</div>
   <div><label>Rips 💨</label><div class="stepper sm"><button data-gb="-1" aria-label="One less rip">−</button><output>${h.gb||0}</output><button data-gb="1" aria-label="One more rip">+</button></div></div>
  </div>
  <div class="chips">${p?(f.length?f.map(r=>`<span class="chip">${r.k==='r3'?'You Suck':'Nice Work Idiot'} - ${r.n.replace('No ','')}</span>`).join(''):'<span class="chip ok">Clean hole</span>'):''}</div>
@@ -1242,6 +1245,7 @@ function playerCard(o,pp){
   </div>
   <div class="pick" style="margin-top:8px"><button data-tg="sc" ${P} aria-pressed="${!!x.sc}">Scoring club</button><button data-tg="ud" ${P} aria-pressed="${!!x.ud}">Missed up &amp; down</button></div>
   <div class="row" style="margin-top:8px;justify-content:flex-start">${mini('beer','🍺','beer')}${mini('gb','💨','rip')}</div>
+  ${(x.beer||0)>0?`<div class="row" style="margin-top:6px;justify-content:flex-start">${mini('shot','💥','shotgun')}</div>`:''}
   <div class="row" style="margin-top:6px;justify-content:flex-start">${mini('club','🪃','thrown club')}${mini('mush','🍄','mushroom')}</div>
   ${pl&&f.length?`<div class="chips" style="min-height:0">${f.map(r=>`<span class="chip">${r.n.replace('No ','')}</span>`).join('')}</div>`:''}
  </div>`;
@@ -1519,7 +1523,8 @@ document.addEventListener('click',async e=>{
  else if(d.sc)h.score=Math.max(1,(h.score==null?h.par:h.score)+ +d.sc);
  else if(d.pt){h.putts=h.putts==null?(+d.pt>0?1:0):Math.max(0,h.putts+ +d.pt);if(h.score==null)h.score=h.par}
  else if(d.tg){h[d.tg]=!h[d.tg];if(h.score==null)h.score=h.par}
- else if(d.beer)h.beer=Math.max(0,(h.beer||0)+ +d.beer);
+ else if(d.beer){h.beer=Math.max(0,(h.beer||0)+ +d.beer);if((h.shot||0)>h.beer)h.shot=h.beer} // a shotgun is a beer
+ else if(d.shot){if(+d.shot>0&&(h.shot||0)>=(h.beer||0))return toast('Add the beer first. Every shotgun counts as a beer too.');h.shot=Math.max(0,(h.shot||0)+ +d.shot)}
  else if(d.gb)h.gb=Math.max(0,(h.gb||0)+ +d.gb);
  else if(d.club)h.club=Math.max(0,(h.club||0)+ +d.club);
  else if(d.mush)h.mush=Math.max(0,(h.mush||0)+ +d.mush);

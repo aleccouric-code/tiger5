@@ -103,7 +103,7 @@ td.n,th.n{text-align:right}
 .hbar .row.me .t{font-weight:800}
 .hbar .row.me .fill{background:var(--gold-d)}
 .hbar .val{font-weight:800;min-width:42px;text-align:right}
-.extras{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.extras{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
 .extras div{background:var(--paper);border-radius:12px;padding:12px;text-align:center}
 .extras b{display:block;font-family:var(--serif);font-size:30px;font-weight:400;line-height:1.1}
 .extras span{font-size:12px;color:var(--mute);font-weight:700}
@@ -224,7 +224,7 @@ function stats(rs){
   onePutt:puttHoles.length?puttHoles.filter(h=>h.putts<=1).length/puttHoles.length:null,
   dist,byPar,nineSplit,holesPlayed:allHoles.length,
   rules:RULES.map(([k,l])=>[l,holes?fin.reduce((a,r)=>a+((r.per||{})[k]||0),0)/holes*18:0]),
-  extras:{beer:sum('beer'),gb:sum('gb'),club:sum('club'),mush:sum('mush')}
+  extras:{beer:sum('beer'),shot:sum('shot'),gb:sum('gb'),club:sum('club'),mush:sum('mush')}
  };
 }
 // Index after each rated round, oldest first (uses every round, not just the period).
@@ -324,7 +324,7 @@ function render(){
   <div class="panel"><h2>Courses</h2><p class="sub">Rounds in this period, by course.</p>${courseTable(rs)}</div>
   <div class="panel"><h2>You vs Friends</h2><p class="sub">Handicap index, lowest first. You’re highlighted.</p>${friendsCompare(ix)}</div>
   <div class="panel w12"><h2>Off the Course</h2><p class="sub">Logged hole by hole this period.</p>
-   <div class="extras"><div><b>🍺 ${st.extras.beer}</b><span>Beers${rs.length?' · '+(st.extras.beer/rs.length).toFixed(1)+'/round':''}</span></div><div><b>💨 ${st.extras.gb}</b><span>Rips${rs.length?' · '+(st.extras.gb/rs.length).toFixed(1)+'/round':''}</span></div><div><b>🪃 ${st.extras.club}</b><span>Thrown clubs</span></div><div><b>🍄 ${st.extras.mush}</b><span>Mushrooms</span></div></div></div>
+   <div class="extras"><div><b>🍺 ${st.extras.beer}</b><span>Beers${rs.length?' · '+(st.extras.beer/rs.length).toFixed(1)+'/round':''}</span></div><div><b>💥 ${st.extras.shot}</b><span>Shotguns${st.extras.beer?' · '+Math.round(st.extras.shot/st.extras.beer*100)+'% of beers':''}</span></div><div><b>💨 ${st.extras.gb}</b><span>Rips${rs.length?' · '+(st.extras.gb/rs.length).toFixed(1)+'/round':''}</span></div><div><b>🪃 ${st.extras.club}</b><span>Thrown clubs</span></div><div><b>🍄 ${st.extras.mush}</b><span>Mushrooms</span></div></div></div>
   <div class="panel w12"><h2>Recent Rounds</h2><p class="sub">This period, newest first.</p><div class="scroll"><table><thead><tr><th>Date</th><th>Course</th><th class="n">Score</th><th class="n">To Par</th><th class="n">Putts</th><th class="n">Tiger 5</th><th class="n">Diff</th></tr></thead><tbody>${[...rs].reverse().slice(0,25).map(r=>`<tr><td>${fmtDate(r.date)}</td><td>${esc(r.course)}${r.n===9?' (9)':''}</td><td class="n"><b>${r.score}</b></td><td class="n">${r.complete?rel(r.score-r.parPlayed):'—'}</td><td class="n">${r.putts==null?'—':r.putts}</td><td class="n">${r.t5}</td><td class="n">${r.diff==null?'—':r.diff.toFixed(1)}</td></tr>`).join('')}</tbody></table></div></div>
  </div></div></div>`;
  $('#main').innerHTML=h;
