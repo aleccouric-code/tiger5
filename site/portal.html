@@ -286,7 +286,12 @@ function render(){
  const monthAgo=hist.filter(h=>h.date<=new Date(Date.now()-30*864e5).toISOString().slice(0,10)).pop();
  const ixDelta=ix!=null&&monthAgo&&monthAgo.index!=null?Math.round((ix-monthAgo.index)*10)/10:null;
  const p=S.profile,avatar=p.avatar_url&&/^https:\/\/afzzyrfmlhfjqdpntuuv\.supabase\.co\//.test(p.avatar_url)?`<img class="av" src="${esc(p.avatar_url)}" alt="">`:`<span class="av" style="background:${avColor(S.me)}">${esc((p.handle||'?').slice(0,1).toUpperCase())}</span>`;
- const rating=st.t5==null?null:st.t5<3?'👑 God Tier':st.t5<=5?'🐐 Goated':'😐 Average';
+ const ripsOf=rounds=>rounds.reduce((a,r)=>a+(r.holes||[]).reduce((x,h)=>x+(+h.gb||0),0),0);
+ // Leading the all-time Rips leaderboard (you and your friends) adds "Geeb God" to the rating.
+ const myRips=ripsOf(all),topRips=Math.max(myRips,...S.friends.map(f=>ripsOf(f.rounds)));
+ const geeb=myRips>0&&myRips===topRips;
+ const tierLabel=st.t5==null?null:st.t5<3?'👑 God Tier':st.t5<=5?'🐐 Goated':'😐 Average';
+ const rating=tierLabel?tierLabel+(geeb?' · 💨 Geeb God':''):(geeb?'💨 Geeb God':null);
  let h=`<div class="dash"><div class="wrap">
   <div class="who">${avatar}<div><h1>${esc(p.handle||'Golfer')}</h1><p>${all.length} rounds posted${rating?` · Rating: ${rating}`:''}</p></div></div>
   <div class="filters"><div class="seg" role="group" aria-label="Time period">${[['all','All Time'],['year','This Year'],['30','Last 30 Days']].map(([k,l])=>`<button data-per="${k}" aria-pressed="${S.period===k}">${l}</button>`).join('')}</div><span class="count">${rs.length} round${rs.length===1?'':'s'} in this period</span></div>`;

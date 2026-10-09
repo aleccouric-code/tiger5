@@ -440,7 +440,7 @@ function roundItem(r,showWho=true){
   <div class="score"><b>${r.score}</b><span>${r.complete?rel(r.score-r.parPlayed):r.holesPlayed+' holes'}</span></div></button>`;
 }
 /* ---------- settings ---------- */
-const APP_VERSION='v29';
+const APP_VERSION='v30';
 const GEAR=`<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.86a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1Z"/></svg>`;
 // Settings: grouped like a phone's settings app. Profile, Payments, Account, About.
 function settingsView(){
@@ -475,6 +475,13 @@ function settingsView(){
 }
 
 /* ---------- leaderboard ---------- */
+// All-time rips for a player, and whether they lead the Rips leaderboard (ties share it; needs at least 1).
+const holeSumAll=(u)=>(S.rounds[u]||[]).reduce((a,r)=>a+holeSum(r,'gb'),0);
+function isRipsLeader(u){
+ const group=[S.me,...friendIds()];if(!group.includes(u))return false;
+ const top=Math.max(...group.map(holeSumAll));
+ return top>0&&holeSumAll(u)===top;
+}
 // Every category ranks you and your friends over the chosen period.
 // low:true means the smallest number leads. Values of null mean "not enough rounds".
 const LB_PERIODS=[['all','All Time'],['year','This Year'],['30','Last 30 Days']];
@@ -594,9 +601,12 @@ function playerView(id){
  const f18=complete.filter(r=>r.n===18);
  h+=`<div class="card big"><div><b>${fmtIdx(x.index)}</b><span>Handicap Index</span></div><div><b>${f18.length?Math.round(f18.reduce((a,r)=>a+r.score,0)/f18.length):'—'}</b><span>Avg 18-Hole Score</span></div><div><b>${t5per18==null?'—':t5per18.toFixed(1)}</b><span>Tiger 5 Misses per 18</span></div></div>`;
  // Rating from Tiger 5 misses per 18: under 3 God Tier, 3–5 Goated, above 5 Average.
+ // Whoever leads the all-time Rips leaderboard (you and your friends) also gets "Geeb God".
  if(t5per18!=null){const v=Math.round(t5per18*10)/10,tier=v<3?0:v<=5?1:2;
   const tiers=[['👑','God Tier','Under 3'],['🐐','Goated','3 to 5'],['😐','Average','More than 5']];
-  h+=`<div class="card rating"><span class="rl">Rating</span><b class="${tier<2?'pos':''}">${tiers[tier][0]} ${tiers[tier][1]}</b>
+  const geeb=isRipsLeader(id);
+  h+=`<div class="card rating"><span class="rl">Rating</span><b class="${tier<2?'pos':''}">${tiers[tier][0]} ${tiers[tier][1]}${geeb?'<span class="geeb"> · 💨 Geeb God</span>':''}</b>
+  ${geeb?`<p class="rsum" style="margin:2px 0 0">Most rips among ${mineView?'you and your friends':'the group'}: <b>${holeSumAll(id)}</b>.</p>`:''}
   <p class="rsum">${mineView?'You average':esc(handle(id))+' averages'} <b>${v.toFixed(1)}</b> Tiger 5 misses per 18 holes.</p>
   <div class="rscale">${tiers.map(([e,l,r],i)=>`<div class="${i===tier?'on':''}"><span>${e} ${l}</span><span>${r} misses</span></div>`).join('')}</div></div>`;}
  if(S.photoView===id&&photoOf(id))h+=`<div class="overlay photo-ov" role="dialog" aria-label="Profile photo" data-act="closephoto"><div class="row" style="flex:none"><b style="color:#fff">${esc(mineView?'You':handle(id))}</b><button data-act="closephoto" style="flex:none">Close</button></div><img src="${esc(photoOf(id))}" alt="${esc(handle(id))}"></div>`;
