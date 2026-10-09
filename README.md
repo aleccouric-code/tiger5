@@ -1,4 +1,4 @@
-# The 19th
+# Sandie
 
 Golf scoring for you and your friends: Tiger 5 mistake tracking, a World Handicap System index, friend requests, and a shared feed of posted rounds. It runs on GitHub Pages, installs to a phone's home screen, and keeps scoring when you lose signal on the course.
 

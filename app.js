@@ -314,12 +314,12 @@ function renderTabs(){
  const t=[['feed','Feed'],['play',draft?'Round':'Play'],['trips','Trips'],['board','Board'],['friends','Friends'],['me','Me']];
  $('#tabs').innerHTML=hide?'':`<div>${t.map(([k,l])=>`<button data-nav="${k}" ${cur===k?'aria-current="page"':''}>${l}${badges[k]?`<span class="badge">${badges[k]}</span>`:''}</button>`).join('')}</div>`;
 }
-// The 19th logo: the splash screen's emblem (gold ring, flag with "19", ball by the cup).
-const LOGO=`<svg class="logo" viewBox="0 0 168 168" aria-hidden="true"><circle cx="84" cy="84" r="80" fill="none" stroke="#E3B04B" stroke-width="6"/><g transform="translate(32 24)"><line x1="34" y1="10" x2="34" y2="104" stroke="#F3EAD3" stroke-width="5" stroke-linecap="round"/><path d="M36 12 L92 28 L36 46 Z" fill="#E3B04B"/><text x="56" y="34" font-family="DM Serif Display, Georgia, serif" font-size="17" fill="#0F2A1D" text-anchor="middle">19</text><ellipse cx="44" cy="106" rx="34" ry="6" fill="#1C4533"/><circle cx="66" cy="98" r="9" fill="#F3EAD3"/></g></svg>`;
+// Sandie logo: the splash screen's emblem (gold ring, flag, ball in the bunker).
+const LOGO=`<svg class="logo" viewBox="0 0 168 168" aria-hidden="true"><circle cx="84" cy="84" r="80" fill="none" stroke="#E3B04B" stroke-width="6"/><g transform="translate(32 24)"><line x1="34" y1="10" x2="34" y2="104" stroke="#F3EAD3" stroke-width="5" stroke-linecap="round"/><path d="M36 12 L92 28 L36 46 Z" fill="#E3B04B"/><path d="M8 104 C 14 92, 40 90, 60 94 C 76 97, 94 94, 98 102 C 102 112, 80 116, 54 116 C 28 116, 4 114, 8 104 Z" fill="#E2CF9F"/><circle cx="66" cy="98" r="9" fill="#F3EAD3"/></g></svg>`;
 // Every page starts with the brand bar (logo, wordmark, your index), then the page title.
 function header(title,eyebrow){
- const ready=S.status==='ready',sub=[eyebrow&&eyebrow!=='The 19th'?eyebrow:'',S.offline&&ready?'Offline':''].filter(Boolean).join(' · ');
- return `<header class="brandbar"><button class="brand" data-nav="feed" aria-label="The 19th, go to Feed">${LOGO}<span class="wm">The <em>19th</em></span></button>${ready?`<button class="idx" data-nav="me" aria-label="Your handicap index"><b>${fmtIdx(myIndex())}</b><span>Index</span></button>`:''}</header>
+ const ready=S.status==='ready',sub=[eyebrow&&eyebrow!=='Sandie'?eyebrow:'',S.offline&&ready?'Offline':''].filter(Boolean).join(' · ');
+ return `<header class="brandbar"><button class="brand" data-nav="feed" aria-label="Sandie, go to Feed">${LOGO}<span class="wm">Sandie<em>.</em></span></button>${ready?`<button class="idx" data-nav="me" aria-label="Your handicap index"><b>${fmtIdx(myIndex())}</b><span>Index</span></button>`:''}</header>
  <div class="ptitle">${sub?`<span class="eyebrow">${esc(sub)}</span>`:''}<h1>${esc(title)}</h1></div>`;
 }
 // Avatar circle: the player's photo if they've added one, otherwise colored initials.
@@ -339,7 +339,7 @@ function offlineView(){
 }
 function authView(){
  const up=S.authStep==='signup';
- return `${header(up?'Create account':'Sign in','The 19th')}
+ return `${header(up?'Create account':'Sign in','Sandie')}
  <div class="card"><p style="margin-top:0">Track your score, your handicap index and the five mistakes that cost you strokes, and see your friends’ rounds.</p>
  <div class="seg" style="margin-bottom:4px"><button data-act="authmode" data-m="signin" aria-pressed="${!up}">Sign in</button><button data-act="authmode" data-m="signup" aria-pressed="${up}">Create account</button></div>
  <label for="email">Email</label><input id="email" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" value="${esc(S.authEmail)}">
@@ -350,7 +350,7 @@ function authView(){
  </div>${LS.get(INVKEY,null)?`<p class="sub">You were invited by a friend. ${up?'Create an account':'Sign in'} and we’ll connect you.</p>`:''}`;
 }
 function setupView(){
- return `${header('Welcome','The 19th')}
+ return `${header('Welcome','Sandie')}
  <div class="card"><label for="handle">Your name in the app</label><input id="handle" maxlength="30" autocomplete="nickname" placeholder="e.g. Alec C.">
  <p class="hint">This is how friends will see you.</p>
  <button class="primary wide" style="margin-top:14px" data-act="join" ${S.busy?'disabled':''}>Continue</button></div>`;
@@ -490,7 +490,7 @@ function playerView(id){
  const mineView=id===S.me;
  if(!mineView&&!isFriend(id))return header(handle(id),'Player')+`<div class="card empty"><b>Scores are shared between friends</b>Add ${esc(handle(id))} as a friend to see all their rounds.<div style="margin-top:14px">${friendAction(id,'Add friend')}</div></div>`;
  const rounds=S.rounds[id]||[],x=hcp(rounds);
- let h=header(mineView?'Your card':handle(id),mineView?'The 19th':'Friend');
+ let h=header(mineView?'Your card':handle(id),mineView?'Sandie':'Friend');
  if(mineView){
   h+=S.editName?`<div class="card"><label for="newname">Your name in the app</label><input id="newname" maxlength="30" value="${esc(me().handle||'')}"><div class="row" style="margin-top:10px"><button class="primary" data-act="savename">Save</button><button data-act="cancelname">Cancel</button></div></div>`
    :`<p class="sub">Playing as <b>${esc(me().handle||'')}</b> · <button class="link" data-act="editname">Change name</button> · <button class="link" data-act="signout">Sign out</button></p>`;
@@ -1136,8 +1136,8 @@ async function unfriend(id){
  loadAll();
 }
 async function shareInvite(){
- const url=inviteUrl(),text=`Add me on The 19th so we can see each other's golf scores. My code is ${me().friend_code}.`;
- if(navigator.share){try{await navigator.share({title:'The 19th',text,url});return}catch(e){if(e&&e.name==='AbortError')return}}
+ const url=inviteUrl(),text=`Add me on Sandie so we can see each other's golf scores. My code is ${me().friend_code}.`;
+ if(navigator.share){try{await navigator.share({title:'Sandie',text,url});return}catch(e){if(e&&e.name==='AbortError')return}}
  try{await navigator.clipboard.writeText(text+' '+url);toast('Invite link copied')}catch(e){toast('Your invite link: '+url)}
 }
 

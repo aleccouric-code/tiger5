@@ -3,21 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>The 19th</title>
+<title>Sandie</title>
 <meta name="description" content="Golf scores, handicaps, Tiger 5 tracking, trips and side bets for you and your friends.">
 <meta name="theme-color" content="#0F2A1D">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="The 19th">
+<meta name="apple-mobile-web-app-title" content="Sandie">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=DM+Serif+Display:ital@0;1&family=Manrope:wght@500;700&display=swap">
 <style>
-/* Splash screen ("The 19th — loading" design): shown for 3 s once per launch. */
+/* Splash screen ("Sandie — loading" design): shown for 3 s once per launch. */
 #splash{position:fixed;inset:0;z-index:100;background:#0F2A1D;color:#F3EAD3;font-family:Manrope,system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:calc(120px + env(safe-area-inset-top)) 32px calc(64px + env(safe-area-inset-bottom));overflow:hidden;transition:opacity .45s ease;cursor:pointer}
 #splash.out{opacity:0;pointer-events:none}
 #splash .s-hill{position:absolute;left:-120px;right:-120px;bottom:-260px;height:520px;border-radius:50%;background:#16392A}
@@ -26,8 +27,8 @@
 #splash .s-top{gap:36px}
 #splash .s-bottom{gap:18px}
 #splash .s-emblem{width:168px;height:168px;border-radius:50%;border:2px solid #E3B04B;display:flex;align-items:center;justify-content:center}
-#splash h1{margin:0;font-family:"DM Serif Display",Georgia,serif;font-weight:400;font-size:64px;line-height:1;letter-spacing:-1px;color:#F3EAD3}
-#splash h1 em{font-style:italic;color:#E3B04B}
+#splash h1{margin:0;font-family:"DM Serif Display",Georgia,serif;font-weight:400;font-size:72px;line-height:1;letter-spacing:-1px;color:#F3EAD3}
+#splash h1 em{font-style:normal;color:#E3B04B}
 #splash .s-tag{margin:14px 0 0;font-size:13px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#CFC4A8;text-align:center}
 #splash .s-ld{display:flex;gap:10px;align-items:center}
 #splash .s-ld span{width:10px;height:10px;border-radius:50%;background:#F3EAD3;display:block;animation:sdot 1.2s ease-in-out infinite}
@@ -73,7 +74,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 .brand{display:flex;align-items:center;gap:10px;border:0;background:none;padding:0;min-height:0;color:inherit;min-width:0}
 .logo{width:46px;height:46px;flex:none}
 .wm{font-family:"DM Serif Display",Georgia,serif;font-size:32px;line-height:1;letter-spacing:-.5px;color:#F3EAD3;white-space:nowrap}
-.wm em{font-style:italic;color:#E3B04B}
+.wm em{font-style:normal;color:#E3B04B}
 .brandbar .idx{border-color:#E3B04B;background:transparent;width:56px;height:56px}
 .brandbar .idx b{color:#F3EAD3;font-size:18px}
 .brandbar .idx span{color:#CFC4A8}
@@ -216,21 +217,20 @@ img.av{object-fit:cover;background:var(--line)}
 </style>
 </head>
 <body>
-<div id="splash" role="status" aria-label="The 19th is loading">
+<div id="splash" role="status" aria-label="Sandie is loading">
  <div class="s-hill" aria-hidden="true"></div><div class="s-hill two" aria-hidden="true"></div>
  <div class="s-top">
   <div class="s-emblem">
    <svg width="104" height="120" viewBox="0 0 104 120" fill="none" aria-hidden="true">
     <line x1="34" y1="10" x2="34" y2="104" stroke="#F3EAD3" stroke-width="3.5" stroke-linecap="round"/>
     <path d="M36 12 L92 28 L36 46 Z" fill="#E3B04B"/>
-    <text x="56" y="34" font-family="DM Serif Display, serif" font-size="17" fill="#0F2A1D" text-anchor="middle">19</text>
-    <ellipse cx="44" cy="106" rx="34" ry="6" fill="#16392A"/>
+    <path d="M8 104 C 14 92, 40 90, 60 94 C 76 97, 94 94, 98 102 C 102 112, 80 116, 54 116 C 28 116, 4 114, 8 104 Z" fill="#E2CF9F"/>
     <circle cx="66" cy="98" r="9" fill="#F3EAD3"/>
     <circle cx="63" cy="95" r="1.2" fill="#C9BFA6"/><circle cx="68" cy="96" r="1.2" fill="#C9BFA6"/>
     <circle cx="65" cy="100" r="1.2" fill="#C9BFA6"/><circle cx="70" cy="101" r="1.2" fill="#C9BFA6"/>
    </svg>
   </div>
-  <div><h1>The <em>19th</em></h1><p class="s-tag">Trips · Scores · The Tab</p></div>
+  <div><h1>Sandie<em>.</em></h1><p class="s-tag">Trips · Scores · The Tab</p></div>
  </div>
  <div class="s-bottom">
   <div class="s-ld" aria-hidden="true"><span></span><span></span><span></span></div>

@@ -1,9 +1,9 @@
 // Service worker: keeps the app usable on the course with weak signal.
 // Bump VERSION whenever you change app files so phones pick up the update.
-const VERSION = 'tiger5-v22';
+const VERSION = 'tiger5-v23';
 const SHELL = [
   './', 'index.html', 'app.js', 'config.js', 'manifest.webmanifest',
-  'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'
+  'icons/icon-192.png', 'icons/favicon-32.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'
 ];
 
 self.addEventListener('install', (e) => {
