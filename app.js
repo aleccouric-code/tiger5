@@ -440,7 +440,7 @@ function roundItem(r,showWho=true){
   <div class="score"><b>${r.score}</b><span>${r.complete?rel(r.score-r.parPlayed):r.holesPlayed+' holes'}</span></div></button>`;
 }
 /* ---------- settings ---------- */
-const APP_VERSION='v31';
+const APP_VERSION='v32';
 const GEAR=`<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.86a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1Z"/></svg>`;
 // Settings: grouped like a phone's settings app. Profile, Payments, Account, About.
 function settingsView(){
@@ -604,12 +604,16 @@ function playerView(id){
  // Rating from Tiger 5 misses per 18: under 3 God Tier, 3–5 Goated, above 5 Average.
  // Whoever leads the all-time Rips leaderboard (you and your friends) also gets "Geeb God".
  if(t5per18!=null){const v=Math.round(t5per18*10)/10,tier=v<3?0:v<=5?1:2;
-  const tiers=[['👑','God Tier','Under 3'],['🐐','Goated','3 to 5'],['😐','Average','More than 5']];
+  const tiers=[['👑','God Tier','Under 3'],['🐐','Goated','3–5'],['😐','Average','5+']];
   const geeb=isRipsLeader(id);
-  h+=`<div class="card rating"><span class="rl">Rating</span><b class="${tier<2?'pos':''}">${tiers[tier][0]} ${tiers[tier][1]}${geeb?'<span class="geeb"> · 💨 Geeb God</span>':''}</b>
-  ${geeb?`<p class="rsum" style="margin:2px 0 0">Most rips among ${mineView?'you and your friends':'the group'}: <b>${holeSumAll(id)}</b>.</p>`:''}
-  <p class="rsum">${mineView?'You average':esc(handle(id))+' averages'} <b>${v.toFixed(1)}</b> Tiger 5 misses per 18 holes.</p>
-  <div class="rscale">${tiers.map(([e,l,r],i)=>`<div class="${i===tier?'on':''}"><span>${e} ${l}</span><span>${r} misses</span></div>`).join('')}</div></div>`;}
+  // Emoji, tier name and the number on one row; a compact 3-part scale; Geeb God as its own badge.
+  h+=`<div class="card rating">
+   <div class="rtop"><span class="remo" aria-hidden="true">${tiers[tier][0]}</span>
+    <div class="rmid"><span class="rl">Rating</span><b class="rname${tier<2?' pos':''}">${tiers[tier][1]}</b></div>
+    <div class="rnum"><b>${v.toFixed(1)}</b><span>Tiger 5 misses<br>per 18</span></div></div>
+   <div class="rscale" role="list" aria-label="Rating scale">${tiers.map(([e,l,r],i)=>`<div role="listitem" class="${i===tier?'on':''}"${i===tier?' aria-current="true"':''}><b>${l}</b><span>${r}</span></div>`).join('')}</div>
+   ${geeb?`<div class="rbadge"><span aria-hidden="true">💨</span><b>Geeb God</b><span>Most rips in the group: ${holeSumAll(id)}</span></div>`:''}
+  </div>`;}
  if(S.photoView===id&&photoOf(id))h+=`<div class="overlay photo-ov" role="dialog" aria-label="Profile photo" data-act="closephoto"><div class="row" style="flex:none"><b style="color:#fff">${esc(mineView?'You':handle(id))}</b><button data-act="closephoto" style="flex:none">Close</button></div><img src="${esc(photoOf(id))}" alt="${esc(handle(id))}"></div>`;
  if(x.index==null)h+=`<p class="sub">${x.rs.length?`${x.need} more rated round${x.need>1?'s':''} until ${mineView?'your':'their'} index is set.`:'Post 3 complete rounds with a course rating and slope to get an index.'}</p>`;
  if(x.rs.length)h+=`<div class="card"><b>Last ${x.rs.length} Differentials</b>${diffChart(x)}<p class="hint" style="margin-top:4px">${x.index!=null?`Green bars are the ${x.take} lowest; they set the index (dashed line).`:'Differentials so far.'}</p></div>`;
