@@ -46,12 +46,9 @@ rn:{name:'Reston National Golf Course',par:[4,5,3,4,5,3,4,4,4,4,3,4,4,4,5,3,4,4]
 // The original courses are in Virginia; Myrtle Beach (SC) and more Virginia courses come from courses.js.
 for(const k in COURSES)COURSES[k].state=COURSES[k].state||'VA';
 Object.assign(COURSES,window.EXTRA_COURSES||{});
-const STATE_NAMES={SC:'South Carolina',VA:'Virginia'};
-// Course picker options grouped by state (alphabetical), courses alphabetical within each.
-function courseOptions(){
- const by={};Object.entries(COURSES).forEach(([k,c])=>(by[c.state]=by[c.state]||[]).push([k,c]));
- return Object.keys(by).sort((a,b)=>(STATE_NAMES[a]||a).localeCompare(STATE_NAMES[b]||b)).map(s=>`<optgroup label="${esc(STATE_NAMES[s]||s)}">${by[s].sort((a,b)=>a[1].name.localeCompare(b[1].name)).map(([k,c])=>`<option value="${k}" ${k==='sr'?'selected':''}>${esc(c.name)}</option>`).join('')}</optgroup>`).join('');
-}
+const STATE_NAMES={MD:'Maryland',NC:'North Carolina',SC:'South Carolina',VA:'Virginia'};
+const PICK_STATES=['VA','MD','NC','SC'];
+for(const k in COURSES)COURSES[k].access=COURSES[k].access||'Public';
 
 /* ---------- helpers ---------- */
 const $=(s)=>document.querySelector(s);
@@ -123,7 +120,7 @@ function toRow(d,t,index,extra){
 
 /* ---------- state ---------- */
 const DKEY='tiger5-draft-v2',OLDKEY='tiger5-rounds-v1',IMPKEY='tiger5-imported-v1',OUTKEY='tiger5-outbox',CACHEKEY='tiger5-cache',INVKEY='tiger5-invite';
-const S={status:'loading',me:null,email:'',profiles:{},friendships:[],rounds:{},view:'feed',arg:null,busy:false,confirm:null,editName:false,nsel:'18',authStep:'signin',authEmail:'',offline:false,invite:null,trips:[],tripMembers:{},bets:{},tripsOk:true,tripSel:[],betKind:'putts',betScoring:'total',tripTabs:{},board:[],boardPicks:{},boardOk:true,bbOpts:2,settling:null,expenses:{},exSplit:null,exPaidBy:null,receiptView:null,likes:{},comments:{},attests:{},venmo:{},photoView:null};
+const S={status:'loading',me:null,email:'',profiles:{},friendships:[],rounds:{},view:'feed',arg:null,busy:false,confirm:null,editName:false,nsel:'18',authStep:'signin',authEmail:'',offline:false,invite:null,trips:[],tripMembers:{},bets:{},tripsOk:true,tripSel:[],betKind:'putts',betScoring:'total',tripTabs:{},board:[],boardPicks:{},boardOk:true,bbOpts:2,settling:null,expenses:{},exSplit:null,exPaidBy:null,receiptView:null,likes:{},comments:{},attests:{},venmo:{},photoView:null,courseKey:'sr',picking:false,cstate:'VA',cfilter:'all',csearch:'',statesLoaded:{},statesLoading:{}};
 let draft=LS.get(DKEY,null),hidx=0,playView=draft&&draft.holes?'hole':'start',lastKey='';
 if(draft&&!draft.holes)draft=null;
 const saveDraft=()=>LS.set(DKEY,draft);
@@ -292,7 +289,7 @@ const inviteUrl=()=>location.origin+location.pathname+'#invite-'+(me().friend_co
 function render(){
  const key=S.status+'|'+S.view+'|'+S.arg+'|'+playView+'|'+S.authStep;
  const keep={};
- if(key===lastKey)document.querySelectorAll('#app input:not([type=file]),#app select').forEach(e=>{if(e.id)keep[e.id]=e.value});
+ if(key===lastKey)document.querySelectorAll('#app input:not([type=file]):not([type=hidden]),#app select').forEach(e=>{if(e.id)keep[e.id]=e.value});
  const focus=document.activeElement&&document.activeElement.id;
  let html;
  if(S.status==='auth')html=authView();
@@ -443,7 +440,7 @@ function roundItem(r,showWho=true){
   <div class="score"><b>${r.score}</b><span>${r.complete?rel(r.score-r.parPlayed):r.holesPlayed+' holes'}</span></div></button>`;
 }
 /* ---------- settings ---------- */
-const APP_VERSION='v26';
+const APP_VERSION='v27';
 const GEAR=`<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.86a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1Z"/></svg>`;
 // Settings: grouped like a phone's settings app. Profile, Payments, Account, About.
 function settingsView(){
@@ -1132,12 +1129,14 @@ function playHtml(){
 function startView(){
  const ix=S.status==='ready'?myIndex():null;
  return `${header('New Round')}
- <div class="card"><label for="course">Course</label><select id="course">${courseOptions()}<optgroup label="Not listed"><option value="">Other course</option></optgroup></select>
+ <div class="card"><label>Course</label><input type="hidden" id="course" value="${esc(S.courseKey||'')}">
+ ${(()=>{const cc=COURSES[S.courseKey];return `<button class="coursebtn" data-act="pickcourse" aria-expanded="${!!S.picking}"><span class="cbtxt">${cc?`<b>${esc(cc.name)}</b><span>${esc([cc.city,STATE_NAMES[cc.state]||cc.state].filter(Boolean).join(', '))}${cc.access==='Private'?' · Private':''}</span>`:`<b>Other course</b><span>Not in the list</span>`}</span><span class="chg">${S.picking?'Close':'Change'}</span></button>`})()}
+ ${S.picking?coursePicker():''}
  <div id="otherWrap" hidden><label for="cname">Course name</label><input id="cname" maxlength="60" placeholder="Where are you playing?">
   <label>Scorecard Photos</label>
   <div class="row scrow">${['front','back'].map(side=>`<div><label class="filebtn${S.scPaths&&S.scPaths[side]?' done':''}" for="sc-${side}">${S.scBusy===side?'Uploading…':S.scPaths&&S.scPaths[side]?'✓ '+(side==='front'?'Front':'Back')+' added':'+ '+(side==='front'?'Front':'Back')}</label><input id="sc-${side}" type="file" accept="image/*" hidden></div>`).join('')}</div>
   <p class="hint">Snap the front and back of the scorecard. Your friends can see them on the round.</p></div>
- <label for="tee">Tees</label><select id="tee">${teeOpts('sr')}</select>
+ <label for="tee">Tees</label><select id="tee">${COURSES[S.courseKey]?teeOpts(S.courseKey):'<option value="">n/a</option>'}</select>
  <div class="row"><div><label for="rating">Course rating</label><input id="rating" inputmode="decimal" placeholder="e.g. 71.9"></div><div><label for="slope">Slope</label><input id="slope" inputmode="numeric" placeholder="e.g. 133"></div></div>
  <label for="rdate">Date played</label><input type="date" id="rdate" value="${today()}" max="${today()}">
  <label>Holes</label><div class="seg" id="nseg">${[['18','18'],['front','Front 9'],['back','Back 9']].map(([v,l])=>`<button aria-pressed="${S.nsel===v}" data-n="${v}">${l}</button>`).join('')}</div>
@@ -1147,6 +1146,34 @@ function startView(){
  <p class="hint">Pick up to 3 friends in your group. You’ll enter their scores on each hole and their rounds post to their cards.</p>`:`<p class="hint">Add friends to score your whole group.</p>`}
  <button class="primary wide" style="margin-top:14px" data-act="start">Start Round</button></div>
  <p class="sub">Rating and slope are on the scorecard. Without them the round still posts but won’t count toward a handicap.${ix!=null?'':' Your index appears after 3 rated rounds.'}</p>`;
+}
+// Each state's full course list lives in courses/<STATE>.json and loads the first time
+// you look at that state (then it's cached for offline use like the rest of the app).
+async function loadStateCourses(st){
+ if(S.statesLoaded[st]||S.statesLoading[st])return;
+ S.statesLoading[st]=true;
+ try{
+  const res=await fetch('courses/'+st+'.json');if(!res.ok)throw new Error('HTTP '+res.status);
+  const data=await res.json();
+  for(const k in data)if(!COURSES[k])COURSES[k]=data[k];
+  S.statesLoaded[st]=true;
+ }catch(e){console.error(e);toast('Couldn’t load '+(STATE_NAMES[st]||st)+' courses. Check your signal and try again.')}
+ S.statesLoading[st]=false;render();
+}
+// Course search: state buttons, a search box (name or city) and All / Public / Private.
+function coursePicker(){
+ const st=S.cstate||'VA',f=S.cfilter||'all',q=(S.csearch||'').trim().toLowerCase();
+ if(!S.statesLoaded[st])loadStateCourses(st);
+ const all=Object.entries(COURSES).filter(([k,c])=>c.state===st&&(f==='all'||c.access===(f==='pub'?'Public':'Private'))&&(!q||(c.name+' '+(c.city||'')).toLowerCase().includes(q)))
+  .sort((a,b)=>a[1].name.localeCompare(b[1].name)),list=all.slice(0,60);
+ return `<div class="cpick">
+  <div class="seg">${PICK_STATES.map(s=>`<button data-cstate="${s}" aria-pressed="${s===st}">${s}</button>`).join('')}</div>
+  <input id="csearch" type="search" placeholder="Search ${esc(STATE_NAMES[st])} by name or city" value="${esc(S.csearch||'')}" autocomplete="off" aria-label="Search courses">
+  <div class="seg sm">${[['all','All'],['pub','Public'],['priv','Private']].map(([v,l])=>`<button data-cfilter="${v}" aria-pressed="${f===v}">${l}</button>`).join('')}</div>
+  <div class="clist">${S.statesLoading[st]&&!list.length?'<p class="hint">Loading courses…</p>':list.length?list.map(([k,c])=>`<button data-course="${esc(k)}" class="${k===S.courseKey?'on':''}"><b>${esc(c.name)}</b><span>${esc(c.city||STATE_NAMES[c.state]||'')}${c.access==='Private'?' · Private':''} · ${Object.keys(c.tees).length} tee${Object.keys(c.tees).length===1?'':'s'}</span></button>`).join(''):'<p class="hint">No courses match. Try another spelling, or use Other course below.</p>'}
+  ${all.length>list.length?`<p class="hint">Showing ${list.length} of ${all.length}. Type more of the name to narrow it down.</p>`:''}</div>
+  <button class="link" data-course="">Course not listed? Use Other course</button>
+ </div>`;
 }
 function syncStart(fresh){
  const c=$('#course');if(!c)return;
@@ -1316,6 +1343,14 @@ document.addEventListener('click',async e=>{
   if(error){fail(error,'Couldn’t post the comment.');return render()}
   (S.comments[d.id]=S.comments[d.id]||[]).push(c);const again=document.getElementById(d.input||'cbody');if(again)again.value='';return render();
  }
+ if(d.cstate){S.cstate=d.cstate;return render()}
+ if(d.cfilter){S.cfilter=d.cfilter;return render()}
+ if('course' in d&&b.closest('.cpick')){
+  // Picked a course (or Other course): close the picker and load its tees, rating and slope.
+  S.courseKey=d.course;S.picking=false;render();
+  const c=$('#course');if(c)c.dispatchEvent(new Event('change',{bubbles:true}));return;
+ }
+ if(a==='pickcourse'){S.picking=!S.picking;if(S.picking)S.cstate=(COURSES[S.courseKey]&&COURSES[S.courseKey].state)||S.cstate||'VA';return render()}
  if(d.withsel){const s=new Set(S.withSel||[]);if(s.has(d.withsel))s.delete(d.withsel);else{if(s.size>=3)return toast('A group is you plus 3 friends.');s.add(d.withsel)}S.withSel=[...s];return render()}
  if(d.lbper){S.lbPeriod=d.lbper;return render()}
  if(d.lbcat){S.lbCat=d.lbcat;return render()}
@@ -1443,7 +1478,7 @@ document.addEventListener('click',async e=>{
  if(a==='start'){
   const k=$('#course').value,c=COURSES[k],n=S.nsel,tee=$('#tee').value;
   const off=n==='back'?9:0,len=n==='18'?18:9;
-  const blank=()=>Array.from({length:len},(_,j)=>{const i=j+off;return c?{par:c.par[i],yds:c.tees[tee].yds[i],si:c.si[i],score:null,putts:null,sc:false,ud:false,beer:0,gb:0}:{par:4,si:i+1,score:null,putts:null,sc:false,ud:false,beer:0,gb:0}});
+  const blank=()=>Array.from({length:len},(_,j)=>{const i=j+off;return c?{par:c.par[i],yds:c.tees[tee].yds[i],si:c.si[i],score:null,putts:2,sc:false,ud:false,beer:0,gb:0}:{par:4,si:i+1,score:null,putts:2,sc:false,ud:false,beer:0,gb:0}}); // putts start at 2
   // Your round is draft.holes; each friend you're scoring is in draft.others with their own holes.
   draft={id:newId(),course:c?c.name:($('#cname').value.trim()||'My round'),tee:c?tee:'',rating:$('#rating').value.trim(),slope:$('#slope').value.trim(),date:$('#rdate').value||today(),nine:n==='18'?null:n,
    holes:blank(),others:(S.withSel||[]).filter(isFriend).slice(0,3).map(uid=>({uid,id:newId(),holes:blank()})),
@@ -1481,7 +1516,7 @@ document.addEventListener('change',e=>{
  if(id==='exphoto'){const f=e.target.files&&e.target.files[0];if(f&&f.size>20e6)return toast('That file is too big. Try a smaller photo.');S.exFile=f||null;return render()}
  if(id==='tee'){const rs=teeRS($('#course').value,e.target.value);$('#rating').value=rs.r;$('#slope').value=rs.s;updateCH()}
 });
-document.addEventListener('input',e=>{if(e.target.id==='rating'||e.target.id==='slope')updateCH()});
+document.addEventListener('input',e=>{if(e.target.id==='rating'||e.target.id==='slope')updateCH();if(e.target.id==='csearch'){S.csearch=e.target.value;render()}});
 document.addEventListener('keydown',e=>{
  if(e.key!=='Enter')return;
  const auth=S.authStep==='signup'?'signup':'signin';

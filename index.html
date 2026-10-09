@@ -155,6 +155,18 @@ button.setrow{border-radius:0}
 .mini span{font-weight:700;min-width:34px;text-align:center}
 .scrow .filebtn{display:block;text-align:center;margin:0;background:var(--card);color:var(--ink);border:1px dashed var(--line)}
 .scrow .filebtn.done{background:var(--gbg);color:var(--green);border-style:solid;border-color:var(--green)}
+.coursebtn{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:10px 12px;background:var(--bg)}
+.coursebtn .cbtxt{flex:1;min-width:0}
+.coursebtn .cbtxt b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.coursebtn .cbtxt span{font-size:13px;color:var(--mute)}
+.coursebtn .chg{flex:none;font-size:14px;font-weight:700;color:var(--green)}
+.cpick{margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--bg);display:grid;gap:8px}
+.cpick .seg.sm button{min-height:34px;font-size:13px;padding:4px 8px}
+.clist{max-height:320px;overflow-y:auto;display:grid;gap:4px;margin:0 -4px;padding:0 4px}
+.clist button{text-align:left;padding:8px 10px;min-height:0;background:var(--card)}
+.clist button b{display:block;font-size:15px}
+.clist button span{font-size:12px;color:var(--mute)}
+.clist button.on{border-color:var(--green);background:var(--gbg)}
 .stepper.need{outline:2px solid var(--red);outline-offset:4px;border-radius:12px}
 .toggle{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;text-align:left;margin-top:8px}
 .toggle[aria-pressed=true]{background:var(--gbg);border-color:var(--green)}

@@ -85,10 +85,13 @@ Score differentials follow the World Handicap System: adjusted gross score (net 
 The same code can be wrapped with [Capacitor](https://capacitorjs.com) to make iOS and Android apps. That needs an Apple Developer account ($99/year, plus a Mac to build) and a Google Play developer account ($25 once).
 
 ## Courses
-The course picker is grouped by state. Besides the original Northern Virginia courses, `courses.js` adds 20 Myrtle Beach (SC) courses and 20 more Virginia courses. That data comes from [OpenGolfAPI](https://opengolfapi.org) (© OpenStreetMap contributors, ODbL 1.0) and was checked before use: 18 holes, handicaps 1–18 used once each, par 68–73, and tee ratings in order of length. Tees whose rating didn't fit their length were dropped, and hole yardages that didn't match the card total are hidden (the card's rating and slope are still used). Courses not in the list can be played as **Other course**, with photos of the scorecard front and back.
+The course picker is a search box with state buttons (VA, MD, NC, SC) and an All / Public / Private filter. Each state's full list lives in `courses/<STATE>.json` and only downloads when you open that state. Besides the original Northern Virginia courses, `courses.js` adds 20 Myrtle Beach (SC) courses and 20 more Virginia courses. That data comes from [OpenGolfAPI](https://opengolfapi.org) (© OpenStreetMap contributors, ODbL 1.0) and was checked before use: 18 holes, handicaps 1–18 used once each, par 68–73, and tee ratings in order of length. Tees whose rating didn't fit their length were dropped, and hole yardages that didn't match the card total are hidden (the card's rating and slope are still used). Courses not in the list can be played as **Other course**, with photos of the scorecard front and back.
 
 ## Group rounds, Leaderboard, Venmo
 - **Group rounds:** pick up to 3 friends under **Playing With** when starting a round, then score everyone on each hole. Friends' rounds post to their cards marked "Scored by", and they (or you) can delete them.
 - **Leaderboard** tab: you and your friends ranked across 13 categories, filterable to This Year or the Last 30 Days.
 - **Venmo:** add your Venmo username on the Me tab. Only friends can see it, and it shows as a Venmo link next to what people owe you.
 - `supabase/group.sql` adds `rounds.entered_by` / `rounds.scorecards`, the friends-only `profile_private` table and the private `scorecards` bucket (already applied to the live database).
+
+### Bulk course lists
+`courses/VA.json`, `MD.json` and `NC.json` hold every public-access course OpenGolfAPI lists for those states (public, semi-private, resort and municipal) that passes the same checks, plus private courses added by hand (Farmington Country Club, South/North). 9-hole courses, par-3 and executive layouts are left out for now because the app assumes 18 holes. The scripts that built them are in `.claude/bulk/` (not published).
