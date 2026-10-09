@@ -1314,7 +1314,7 @@ if('serviceWorker' in navigator&&location.protocol==='https:'){
  // When a new version takes over, reload once so the new code runs right away
  // (skipped on the very first install, when nothing was running before).
  const hadController=!!navigator.serviceWorker.controller;let reloaded=false;
- navigator.serviceWorker.addEventListener('controllerchange',()=>{if(hadController&&!reloaded&&!S.busy){reloaded=true;location.reload()}});
+ navigator.serviceWorker.addEventListener('controllerchange',()=>{if(hadController&&!reloaded&&!S.busy){reloaded=true;try{sessionStorage.setItem('t19-skip-splash','1')}catch(e){}location.reload()}});
  navigator.serviceWorker.register('sw.js').then(reg=>{
   // Installed home-screen apps rarely restart, so look for updates whenever the app is reopened.
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')reg.update().catch(()=>{})});

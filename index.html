@@ -227,11 +227,16 @@ img.av{object-fit:cover;background:var(--line)}
  </div>
 </div>
 <script>
-// Splash: 3 seconds once per launch (skipped on reloads within the same session); tap to skip.
+// Splash: 3 seconds on every open and refresh, except mid-round (a round in progress
+// is saved on the phone) or when the app reloads itself to install an update. Tap to skip.
 (function(){
- var s=document.getElementById('splash'),seen=false;
- try{seen=sessionStorage.getItem('t19-splash')==='1';sessionStorage.setItem('t19-splash','1')}catch(e){}
- if(seen){s.remove();return}
+ var s=document.getElementById('splash'),skip=false;
+ try{
+  var d=JSON.parse(localStorage.getItem('tiger5-draft-v2')||'null');
+  skip=!!(d&&d.holes)||sessionStorage.getItem('t19-skip-splash')==='1';
+  sessionStorage.removeItem('t19-skip-splash');
+ }catch(e){}
+ if(skip){s.remove();return}
  var hide=function(){if(!s.isConnected)return;s.classList.add('out');setTimeout(function(){s.remove()},500)};
  s.addEventListener('click',hide);setTimeout(hide,3000);
 })();
