@@ -10,6 +10,7 @@ Golf scoring for you and your friends: Tiger 5 mistake tracking, a World Handica
 | `app.js` | All app logic: scoring, handicap math, friends, sync |
 | `config.js` | Your Supabase project URL and anon key |
 | `supabase/schema.sql` | Database tables and security rules; run once in Supabase |
+| `supabase/trips.sql`, `supabase/board.sql` | Trips and side bets; the Betting Board (run after schema.sql) |
 | `manifest.webmanifest`, `sw.js`, `icons/` | Make it installable and usable offline |
 
 ## One-time setup
@@ -40,6 +41,13 @@ A trip has dates and players (anyone on the trip can add their friends). Any pla
 Each player puts the stake into each bet's pot and the winners split it. **Settle up** shows each player's net and the fewest payments to square everyone up. The app only keeps track; it never moves money.
 
 Trip-mates who aren't friends can see each other's names and the rounds they posted during the trip, nothing else.
+
+## Betting Board
+`supabase/board.sql` turns on the **Board** tab (already applied to the live database).
+
+Post a bet for later ("Jon breaks 80 at Whiskey Creek") with 2–6 options (Yes/No by default, or player names), a stake per player, and an optional settle-by date. Your friends see it and pick an option while it's open. The poster can lock picks, mark the winning option, undo a result, or call the bet off.
+
+When a bet is settled, everyone who picked a losing option pays their stake, split evenly among those who picked the winner. **Your board balance** totals what each person owes you or you owe them across all settled bets. Tracking only; the app never moves money.
 
 ## Inviting friends
 On **Friends → Find friends**, search by part of a name (3+ letters), a full email address, or a 6-letter friend code, then tap **Add**. Searches never show anyone's email.

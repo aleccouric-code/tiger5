@@ -112,7 +112,7 @@ function toRow(d,t,index,extra){
 
 /* ---------- state ---------- */
 const DKEY='tiger5-draft-v2',OLDKEY='tiger5-rounds-v1',IMPKEY='tiger5-imported-v1',OUTKEY='tiger5-outbox',CACHEKEY='tiger5-cache',INVKEY='tiger5-invite';
-const S={status:'loading',me:null,email:'',profiles:{},friendships:[],rounds:{},view:'feed',arg:null,busy:false,confirm:null,editName:false,nsel:'18',authStep:'signin',authEmail:'',offline:false,invite:null,trips:[],tripMembers:{},bets:{},tripsOk:true,tripSel:[],betKind:'putts',betScoring:'total'};
+const S={status:'loading',me:null,email:'',profiles:{},friendships:[],rounds:{},view:'feed',arg:null,busy:false,confirm:null,editName:false,nsel:'18',authStep:'signin',authEmail:'',offline:false,invite:null,trips:[],tripMembers:{},bets:{},tripsOk:true,tripSel:[],betKind:'putts',betScoring:'total',board:[],boardPicks:{},boardOk:true,bbOpts:2,settling:null};
 let draft=LS.get(DKEY,null),hidx=0,playView=draft&&draft.holes?'hole':'start',lastKey='';
 if(draft&&!draft.holes)draft=null;
 const saveDraft=()=>LS.set(DKEY,draft);
@@ -133,8 +133,8 @@ const isNetErr=(e)=>!navigator.onLine||(e&&(e instanceof TypeError||/fetch|netwo
 function fail(e,what){console.error(e);toast(isNetErr(e)?'You’re offline. Try again when you have signal.':(what||'That didn’t save.')+' '+(e&&e.message?e.message:''))}
 
 /* ---------- loading ---------- */
-function cacheSave(){LS.set(CACHEKEY,{me:S.me,profiles:S.profiles,friendships:S.friendships,rounds:S.rounds,trips:S.trips,tripMembers:S.tripMembers,bets:S.bets})}
-function cacheLoad(){const c=LS.get(CACHEKEY,null);if(!c||c.me!==S.me)return false;S.profiles=c.profiles||{};S.friendships=c.friendships||[];S.rounds=c.rounds||{};S.trips=c.trips||[];S.tripMembers=c.tripMembers||{};S.bets=c.bets||{};return true}
+function cacheSave(){LS.set(CACHEKEY,{me:S.me,profiles:S.profiles,friendships:S.friendships,rounds:S.rounds,trips:S.trips,tripMembers:S.tripMembers,bets:S.bets,board:S.board,boardPicks:S.boardPicks})}
+function cacheLoad(){const c=LS.get(CACHEKEY,null);if(!c||c.me!==S.me)return false;S.profiles=c.profiles||{};S.friendships=c.friendships||[];S.rounds=c.rounds||{};S.trips=c.trips||[];S.tripMembers=c.tripMembers||{};S.bets=c.bets||{};S.board=c.board||[];S.boardPicks=c.boardPicks||{};return true}
 
 async function loadAll(){
  try{
@@ -147,6 +147,7 @@ async function loadAll(){
   if(others.length){const {data:ps,error}=await sb.from('profiles').select('id,handle').in('id',others);if(error)throw error;(ps||[]).forEach(p=>profiles[p.id]=p)}
   const ids=[S.me,...new Set(S.friendships.filter(f=>f.status==='accepted').map(other))];
   const tripMates=await loadTrips(profiles,ids);
+  await loadBoard(profiles);
   (S.searchResults||[]).forEach(p=>{if(!profiles[p.id])profiles[p.id]={id:p.id,handle:p.handle}});
   S.profiles=profiles;
   const {data:rs,error:e3}=await sb.from('rounds').select('*').in('user_id',ids).order('date',{ascending:false}).order('created_at',{ascending:false}).limit(1000);if(e3)throw e3;
@@ -191,6 +192,23 @@ async function loadTrips(profiles,friendsAndMe){
   if(e&&(e.code==='42P01'||e.code==='PGRST205'||/does not exist|schema cache/i.test(e.message||'')))S.tripsOk=false;
   else throw e;
   return [];
+ }
+}
+// Loads Betting Board bets the viewer can see, with everyone's picks.
+// Like trips, a missing board.sql leaves the rest of the app working.
+async function loadBoard(profiles){
+ try{
+  const {data:bs,error}=await sb.from('board_bets').select('*').order('created_at',{ascending:false}).limit(200);if(error)throw error;
+  const ids=(bs||[]).map(b=>b.id);let picks=[];
+  if(ids.length){const r=await sb.from('board_picks').select('bet_id,user_id,option').in('bet_id',ids);if(r.error)throw r.error;picks=r.data||[]}
+  const by={};picks.forEach(p=>(by[p.bet_id]=by[p.bet_id]||[]).push(p));
+  S.board=bs||[];S.boardPicks=by;S.boardOk=true;
+  const need=[...new Set([...S.board.map(b=>b.created_by),...picks.map(p=>p.user_id)])].filter(u=>!profiles[u]);
+  if(need.length){const {data:ps}=await sb.from('profiles').select('id,handle').in('id',need);(ps||[]).forEach(p=>profiles[p.id]=p)}
+ }catch(e){
+  console.error(e);
+  if(e&&(e.code==='42P01'||e.code==='PGRST205'||/does not exist|schema cache/i.test(e.message||'')))S.boardOk=false;
+  else throw e;
  }
 }
 function addPendingLocal(){
@@ -245,6 +263,8 @@ function render(){
  else if(S.status==='loading')html=header('Tiger 5')+`<div class="empty"><b>Loading your group…</b>Rounds and friends appear here in a moment.</div>`;
  else if(S.status!=='ready')html=header('Tiger 5')+offlineView();
  else if(S.view==='friends')html=friendsView();
+ else if(S.view==='board')html=boardView();
+ else if(S.view==='newbet')html=newBetView();
  else if(S.view==='trips')html=tripsView();
  else if(S.view==='newtrip')html=newTripView();
  else if(S.view==='trip')html=tripView(S.arg);
@@ -261,10 +281,11 @@ function render(){
 }
 function renderTabs(){
  const hide=S.status==='auth'||S.status==='setup';
- const n=S.status==='ready'?incoming().length:0;
- const cur=S.view==='player'&&(S.arg||S.me)===S.me?'me':(S.view==='trip'||S.view==='newtrip')?'trips':(S.view==='round'||S.view==='player')?'':S.view;
- const t=[['feed','Feed'],['play',draft?'Round':'Play'],['trips','Trips'],['friends','Friends'],['me','Me']];
- $('#tabs').innerHTML=hide?'':`<div>${t.map(([k,l])=>`<button data-nav="${k}" ${cur===k?'aria-current="page"':''}>${l}${k==='friends'&&n?`<span class="badge">${n}</span>`:''}</button>`).join('')}</div>`;
+ const ready=S.status==='ready';
+ const badges={friends:ready?incoming().length:0,board:ready?S.board.filter(needsMyPick).length:0};
+ const cur=S.view==='player'&&(S.arg||S.me)===S.me?'me':(S.view==='trip'||S.view==='newtrip')?'trips':S.view==='newbet'?'board':(S.view==='round'||S.view==='player')?'':S.view;
+ const t=[['feed','Feed'],['play',draft?'Round':'Play'],['trips','Trips'],['board','Board'],['friends','Friends'],['me','Me']];
+ $('#tabs').innerHTML=hide?'':`<div>${t.map(([k,l])=>`<button data-nav="${k}" ${cur===k?'aria-current="page"':''}>${l}${badges[k]?`<span class="badge">${badges[k]}</span>`:''}</button>`).join('')}</div>`;
 }
 function header(title,eyebrow){
  const ready=S.status==='ready';
@@ -313,6 +334,8 @@ function feedView(){
  let h=header('Feed');
  const inc=incoming().length;
  if(inc)h+=`<button class="card item note" data-nav="friends"><div class="mid"><b>${inc} friend request${inc>1?'s':''}</b><span>Tap to review</span></div></button>`;
+ const waiting=S.board.filter(needsMyPick).length;
+ if(waiting)h+=`<button class="card item note" data-nav="board"><div class="mid"><b>${waiting} bet${waiting>1?'s':''} waiting for your pick</b><span>On the Betting Board</span></div><span class="tag gold">Pick</span></button>`;
  S.trips.filter(t=>tripStatus(t)==='live').forEach(t=>h+=`<button class="card item note" data-trip="${esc(t.id)}"><div class="mid"><b>${esc(t.name)}</b><span>Trip happening now · ${(S.bets[t.id]||[]).length} bets</span></div><span class="tag gold">Leaderboards</span></button>`);
  if(draft)h+=`<button class="card item" data-nav="play"><div class="mid"><b>Round in progress</b><span>${esc(draft.course)}</span></div><span class="tag">Resume</span></button>`;
  if(!rs.length)h+=`<div class="card empty"><b>No posted rounds yet</b>Play a round and post it, or add friends to see theirs here.<div class="row" style="margin-top:14px"><button class="primary" data-nav="play">Start a round</button><button data-nav="friends">Add friends</button></div></div>`;
@@ -600,6 +623,109 @@ async function toggleWinner(betId,u){
  if(error){fail(error,'Couldn’t save the winner.');loadAll()}
 }
 
+/* ---------- betting board ---------- */
+// Bets posted to friends for later. Everyone who picked the wrong option pays
+// their stake, split evenly among those who picked right. Tracking only.
+const needsMyPick=(b)=>b.status==='open'&&b.created_by!==S.me&&!(S.boardPicks[b.id]||[]).some(p=>p.user_id===S.me);
+function boardPayout(b){
+ if(b.status!=='settled'||b.winning_option==null)return null;
+ const picks=S.boardPicks[b.id]||[],stake=+b.stake||0;
+ const win=picks.filter(p=>p.option===b.winning_option).map(p=>p.user_id),lose=picks.filter(p=>p.option!==b.winning_option).map(p=>p.user_id);
+ const pays=[];
+ if(stake&&win.length&&lose.length){const share=Math.round(stake/win.length*100)/100;lose.forEach(l=>win.forEach(w=>pays.push({from:l,to:w,amt:share})))}
+ return{win,lose,pays};
+}
+// What each person owes you (positive) or you owe them (negative), across all settled bets.
+function boardBalances(){
+ const bal={};
+ S.board.forEach(b=>{const p=boardPayout(b);if(!p)return;p.pays.forEach(x=>{
+  if(x.from===S.me)bal[x.to]=(bal[x.to]||0)-x.amt;else if(x.to===S.me)bal[x.from]=(bal[x.from]||0)+x.amt;})});
+ return Object.entries(bal).map(([u,v])=>[u,Math.round(v*100)/100]).filter(([,v])=>Math.abs(v)>=0.01).sort((a,b)=>b[1]-a[1]);
+}
+function boardView(){
+ let h=header('Betting Board');
+ if(!S.boardOk)return h+`<div class="card note"><b>The board needs one more database step</b><p style="margin:4px 0 0">Run <b>supabase/board.sql</b> in the Supabase SQL Editor, then reopen the app.</p></div>`;
+ h+=`<button class="primary wide" style="margin-bottom:14px" data-nav="newbet">Post a bet</button>`;
+ const bal=boardBalances();
+ if(bal.length){
+  const net=bal.reduce((a,[,v])=>a+v,0);
+  h+=`<div class="card"><div class="bet-head"><b>Your board balance</b><span class="money ${net>0?'pos':net<0?'neg':''}">${net>0?'+':net<0?'−':''}${fmtMoney(net)}</span></div><table style="margin-top:6px"><tbody>${bal.map(([u,v])=>`<tr><td>${v>0?esc(handle(u))+' owes you':'You owe '+esc(handle(u))}</td><td class="n ${v>0?'pos':'neg'}">${fmtMoney(v)}</td></tr>`).join('')}</tbody></table><p class="hint">Totals from every settled bet. Settle up however your group pays each other.</p></div>`;
+ }
+ if(!S.board.length)return h+`<div class="card empty"><b>Nothing on the board yet</b>Post a bet for later, like “Jon breaks 80 at Whiskey Creek”. Your friends see it and pick a side.</div>`;
+ [['open','Taking picks'],['locked','Picks locked, waiting on the result'],['settled','Settled'],['void','Called off']].forEach(([st,label])=>{
+  let list=S.board.filter(b=>b.status===st);if(!list.length)return;
+  if(st==='open')list=list.sort((a,b)=>needsMyPick(b)-needsMyPick(a));
+  if(st==='settled'||st==='void')list=list.slice(0,20);
+  h+=`<h2>${label}</h2>`+list.map(boardCard).join('');
+ });
+ return h;
+}
+function boardCard(b){
+ const picks=S.boardPicks[b.id]||[],mine=picks.find(p=>p.user_id===S.me),owner=b.created_by===S.me,stake=+b.stake||0,open=b.status==='open';
+ const who=(u)=>u===S.me?'You':handle(u);
+ let h=`<div class="card${needsMyPick(b)?' note':''}"><div class="bet-head"><b>${esc(b.title)}</b><span class="money">${stake?fmtMoney(stake)+' each':'Bragging rights'}</span></div>
+ <p class="hint" style="margin:2px 0 6px">Posted by ${esc(who(b.created_by))}${b.settle_by?' · settles by '+fmtDate(b.settle_by):''}${needsMyPick(b)?' · <b>waiting for your pick</b>':''}</p>`;
+ if(b.details)h+=`<p style="margin:0 0 6px">${esc(b.details)}</p>`;
+ (b.options||[]).forEach((o,i)=>{
+  const ps=picks.filter(p=>p.option===i),won=b.status==='settled'&&b.winning_option===i,mineHere=mine&&mine.option===i;
+  const action=S.settling===b.id?`<button class="primary" data-act="settlebet" data-id="${esc(b.id)}" data-opt="${i}">Won</button>`
+   :open?`<button data-pickbet="${esc(b.id)}" data-opt="${i}" aria-pressed="${!!mineHere}">${mineHere?'Your pick':'Pick'}</button>`:'';
+  h+=`<div class="opt${won?' won':''}"><div class="mid"><b>${esc(o)}${won?' ✓':''}</b><span>${ps.length?esc(ps.map(p=>who(p.user_id)).join(', ')):'No picks'}</span></div>${action}</div>`;
+ });
+ if(open&&mine)h+=`<p style="margin:6px 0 0"><button class="link" data-act="unpick" data-id="${esc(b.id)}">Withdraw my pick</button></p>`;
+ const pay=boardPayout(b);
+ if(pay)h+=pay.pays.length?`<table style="margin-top:8px"><tbody>${pay.pays.map(x=>`<tr><td>${esc(who(x.from))} pay${x.from===S.me?'':'s'} ${esc(x.to===S.me?'you':handle(x.to))}</td><td class="n">${fmtMoney(x.amt)}</td></tr>`).join('')}</tbody></table>`
+  :`<p class="hint">No money changes hands${stake?' (nobody picked the losing side, or nobody picked the winner)':''}.</p>`;
+ if(owner){
+  const btn=(act,label,cls)=>`<button ${cls?`class="${cls}"`:''} data-act="${act}" data-id="${esc(b.id)}">${label}</button>`;
+  let c='';
+  if(S.settling===b.id)c=`<p class="hint" style="width:100%;margin:0">Tap <b>Won</b> next to the winning option. Picks close when you do.</p>`+btn('cancelsettle','Cancel');
+  else if(S.confirm==='bbdel:'+b.id)c=btn('delboard','Delete for good','danger')+btn('cancelc','Keep');
+  else if(open)c=btn('lockbet','Lock picks')+btn('startsettle','Settle')+btn('voidbet','Call off');
+  else if(b.status==='locked')c=btn('startsettle','Settle','primary')+btn('reopenbet','Reopen picks')+btn('voidbet','Call off');
+  else c=btn('reopenbet',b.status==='settled'?'Undo result':'Reopen')+`<button data-act="ask" data-c="bbdel:${esc(b.id)}">Delete</button>`;
+  h+=`<div class="row" style="flex-wrap:wrap;margin-top:10px">${c}</div>`;
+ }
+ return h+`</div>`;
+}
+function newBetView(){
+ const n=S.bbOpts;
+ return header('Post a bet','Betting Board')+`<div class="card">
+ <label for="bbtitle" style="margin-top:0">The bet</label><input id="bbtitle" maxlength="80" placeholder="e.g. Jon breaks 80 at Whiskey Creek">
+ <label for="bbdetails">Details (optional)</label><input id="bbdetails" maxlength="300" placeholder="Which round, tiebreaks, anything else">
+ <label>Options</label>${Array.from({length:n},(_,i)=>`<input id="bbopt${i}" maxlength="40" style="margin-bottom:6px" value="${i===0?'Yes':i===1?'No':''}" placeholder="Option ${i+1}">`).join('')}
+ <div class="row">${n<6?'<button data-act="bbmore">+ Add option</button>':''}${n>2?'<button data-act="bbless">Remove last</button>':''}</div>
+ <p class="hint">For “who wins” bets, use player names as the options.</p>
+ <div class="row"><div><label for="bbstake">Stake per player ($)</label><input id="bbstake" inputmode="decimal" placeholder="0"></div><div><label for="bbdate">Settle by (optional)</label><input id="bbdate" type="date" min="${today()}"></div></div>
+ <button class="primary wide" style="margin-top:14px" data-act="postbet" ${S.busy?'disabled':''}>Post to the board</button></div>
+ <p class="sub">Your friends see it and pick an option. Once it’s decided, you mark the winner: everyone who picked wrong pays their stake, split evenly among those who picked right. The app only keeps track.</p>`;
+}
+async function postBoardBet(){
+ const title=$('#bbtitle').value.trim(),details=$('#bbdetails').value.trim();
+ const options=Array.from({length:S.bbOpts},(_,i)=>$('#bbopt'+i).value.trim()).filter(Boolean);
+ if(!title)return toast('Describe the bet.');
+ if(options.length<2)return toast('Give at least two options.');
+ if(new Set(options.map(o=>o.toLowerCase())).size!==options.length)return toast('Each option needs a different name.');
+ const raw=$('#bbstake').value.replace(/[$,\s]/g,''),stake=raw?+raw:0;
+ if(!(stake>=0)||stake>99999)return toast('Enter the stake in dollars, or 0.');
+ S.busy=true;render();
+ const {error}=await sb.from('board_bets').insert({id:newId(),created_by:S.me,title,details:details||null,options,stake,settle_by:$('#bbdate').value||null});
+ S.busy=false;
+ if(error){fail(error,'Couldn’t post the bet.');return render()}
+ S.bbOpts=2;toast('Posted to the board');go('board');loadAll();
+}
+async function boardUpdate(id,patch,msg){
+ const {error}=await sb.from('board_bets').update(patch).eq('id',id);
+ if(error)return fail(error,'Couldn’t update the bet.');
+ if(msg)toast(msg);loadAll();
+}
+async function pickBoard(id,opt){
+ const list=S.boardPicks[id]=(S.boardPicks[id]||[]).filter(p=>p.user_id!==S.me);
+ list.push({bet_id:id,user_id:S.me,option:opt});render();
+ const {error}=await sb.from('board_picks').upsert({bet_id:id,user_id:S.me,option:opt});
+ if(error){fail(error,'Your pick didn’t save. The bet may have just been locked.');loadAll()}
+}
+
 /* ---------- play ---------- */
 function playHtml(){
  if(playView==='start'||!draft)return startView();
@@ -665,7 +791,7 @@ function summaryView(){
 }
 
 /* ---------- actions ---------- */
-function go(view,arg){S.view=view;S.arg=arg||null;S.confirm=null;S.editName=false;render()}
+function go(view,arg){S.view=view;S.arg=arg||null;S.confirm=null;S.editName=false;S.settling=null;render()}
 async function postRound(){
  if(!draft||S.busy)return;
  const ix=myIndex(),t=calc(draft,ix),row=JSON.parse(JSON.stringify(toRow(draft,t,ix)));
@@ -726,6 +852,7 @@ document.addEventListener('click',async e=>{
  if(d.tsel){const s=new Set(S.tripSel);s.has(d.tsel)?s.delete(d.tsel):s.add(d.tsel);S.tripSel=[...s];return render()}
  if(d.bs){S.betScoring=d.bs;return render()}
  if(d.win)return toggleWinner(d.win,d.u);
+ if(d.pickbet)return pickBoard(d.pickbet,+d.opt);
  if(d.player)return go('player',d.player);
  if(b.parentElement&&b.parentElement.id==='nseg'){S.nsel=d.n;[...b.parentElement.children].forEach(x=>x.setAttribute('aria-pressed',x===b));return updateCH()}
 
@@ -782,6 +909,16 @@ document.addEventListener('click',async e=>{
   toast('Round deleted');go('feed');return loadAll();
  }
  if(a==='import')return importOld();
+ if(a==='postbet')return postBoardBet();
+ if(a==='bbmore'||a==='bbless'){S.bbOpts=Math.max(2,Math.min(6,S.bbOpts+(a==='bbmore'?1:-1)));return render()}
+ if(a==='unpick'){S.boardPicks[d.id]=(S.boardPicks[d.id]||[]).filter(p=>p.user_id!==S.me);render();const {error}=await sb.from('board_picks').delete().eq('bet_id',d.id).eq('user_id',S.me);if(error)fail(error,'Couldn’t withdraw your pick.');return loadAll()}
+ if(a==='lockbet')return boardUpdate(d.id,{status:'locked'},'Picks locked');
+ if(a==='voidbet')return boardUpdate(d.id,{status:'void',winning_option:null,settled_at:null},'Bet called off');
+ if(a==='reopenbet'){const b=S.board.find(x=>x.id===d.id);return boardUpdate(d.id,b&&b.status==='settled'?{status:'locked',winning_option:null,settled_at:null}:{status:'open'},b&&b.status==='settled'?'Result undone':'Picks reopened')}
+ if(a==='startsettle'){S.settling=d.id;return render()}
+ if(a==='cancelsettle'){S.settling=null;return render()}
+ if(a==='settlebet'){S.settling=null;return boardUpdate(d.id,{status:'settled',winning_option:+d.opt,settled_at:new Date().toISOString()},'Bet settled')}
+ if(a==='delboard'){S.confirm=null;const {error}=await sb.from('board_bets').delete().eq('id',d.id);if(error)return fail(error,'Couldn’t delete the bet.');toast('Bet deleted');return loadAll()}
  if(a==='createtrip')return createTrip();
  if(a==='addbet')return addBet();
  if(a==='delbet'){S.confirm=null;const {error}=await sb.from('bets').delete().eq('id',d.id);if(error)return fail(error,'Couldn’t delete the bet.');return loadAll()}
