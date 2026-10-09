@@ -12,6 +12,8 @@ create table if not exists public.trips (
   created_at  timestamptz not null default now(),
   check (end_date >= start_date)
 );
+-- Set when the organizer ends a trip early; the trip then counts as completed.
+alter table public.trips add column if not exists ended_at timestamptz;
 
 create table if not exists public.trip_members (
   trip_id   uuid not null references public.trips on delete cascade,

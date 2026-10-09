@@ -47,6 +47,8 @@ Trip-mates who aren't friends can see each other's names and the rounds they pos
 
 On a trip, anyone can add a receipt: what it was for, the total, who paid, who it's split between (everyone by default), and an optional photo or PDF. Photos are shrunk to 1600px JPEGs before upload. Only people on that trip can see its receipts. The person who added a receipt, the person who paid, or the organizer can delete it.
 
+The Trips page splits **Current trips** and **Completed trips**. A trip is completed after its last day, or when the organizer taps **End trip** (which pulls the last day in to today so later rounds stop counting; **Reopen** undoes it).
+
 A trip page has four buttons: **Bets**, **Receipts**, **Rounds** and **Players**. Bets and receipts settle up separately: **Bets** ends with a bets-only settle-up, and **Receipts** has its own settle-up (what each person paid minus their share). Each lists the fewest payments that square that ledger.
 
 ## Betting Board

@@ -326,6 +326,9 @@ function setupView(){
 function allFeedRounds(){
  return [S.me,...friendIds()].flatMap(id=>S.rounds[id]||[]).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.at||0)-(a.at||0));
 }
+// Per-hole extras (beers, GB) added up for a round.
+const holeSum=(r,k)=>(r.holes||[]).reduce((a,h)=>a+(+h[k]||0),0);
+const extrasTags=(r)=>{const b=holeSum(r,'beer'),g=holeSum(r,'gb');return (b?`<span class="tag gold">🍺 ${b}</span>`:'')+(g?`<span class="tag">GB ${g}</span>`:'')};
 // Round rating from Tiger 5 misses. Trophies: 0 → three, 1 → two, 2–3 → one
 // (finished rounds only, so a few clean holes don't earn them).
 // Poo: 4–7 → one, 8–10 → two, 11+ → three.
@@ -342,7 +345,7 @@ function roundItem(r,showWho=true){
   ${showWho?av(r.uid):''}
   <div class="mid"><b>${showWho?esc(r.uid===S.me?'You':handle(r.uid))+' · ':''}${esc(r.course)}</b>
   <span>${fmtDate(r.date)}${r.n===9?' · 9 holes':''}${r.tee?' · '+esc(r.tee):''}</span>
-  <div class="tags">${rateBadge(r)}<span class="tag ${r.t5>=Math.round(r.n/2)?'red':''}">Tiger 5 misses ${r.t5}</span>${r.diff!=null?`<span class="tag gold">Diff ${fmtDiff(r.diff)}</span>`:''}${r.pending?'<span class="tag red">Waiting to post</span>':''}</div></div>
+  <div class="tags">${rateBadge(r)}<span class="tag ${r.t5>=Math.round(r.n/2)?'red':''}">Tiger 5 misses ${r.t5}</span>${r.diff!=null?`<span class="tag gold">Diff ${fmtDiff(r.diff)}</span>`:''}${extrasTags(r)}${r.pending?'<span class="tag red">Waiting to post</span>':''}</div></div>
   <div class="score"><b>${r.score}</b><span>${r.complete?rel(r.score-r.parPlayed):r.holesPlayed+' holes'}</span></div></button>`;
 }
 function feedView(){
@@ -453,7 +456,9 @@ function roundView(key){
   return `<div class="scroll" style="margin-bottom:8px"><table class="sc"><tr><th>Hole</th>${sl.map((_,i)=>`<th>${start+from+i}</th>`).join('')}<th>Tot</th></tr>
   <tr><td>Par</td>${sl.map(h=>`<td>${h.par}</td>`).join('')}<td>${sum(h=>h.par)}</td></tr>
   <tr><td>Score</td>${sl.map(h=>`<td class="${fails(h).length?'miss':played(h)&&h.score<h.par?'u':''}">${played(h)?h.score:'–'}</td>`).join('')}<td><b>${sum(h=>h.score)}</b></td></tr>
-  <tr><td>Putts</td>${sl.map(h=>`<td>${played(h)&&h.putts!=null?h.putts:'–'}</td>`).join('')}<td>${sl.some(h=>played(h)&&h.putts!=null)?sum(h=>played(h)?h.putts:0):'–'}</td></tr></table></div>`};
+  <tr><td>Putts</td>${sl.map(h=>`<td>${played(h)&&h.putts!=null?h.putts:'–'}</td>`).join('')}<td>${sl.some(h=>played(h)&&h.putts!=null)?sum(h=>played(h)?h.putts:0):'–'}</td></tr>
+  ${holeSum(r,'beer')?`<tr><td>Beers</td>${sl.map(h=>`<td>${h.beer||''}</td>`).join('')}<td>${sum(h=>h.beer)}</td></tr>`:''}
+  ${holeSum(r,'gb')?`<tr><td>GB</td>${sl.map(h=>`<td>${h.gb||''}</td>`).join('')}<td>${sum(h=>h.gb)}</td></tr>`:''}</table></div>`};
  h+=`<div class="card">${rows(0,9)}${rows(9,18)}<p class="hint" style="margin:0">Red holes broke a Tiger 5 rule. Green holes were under par.</p></div>`;
  h+=`<h2>Tiger 5</h2><div class="card"><table>`;
  RULES.forEach(q=>{const c=(r.per&&r.per[q.k])||0;h+=`<tr><td>${q.n}<div class="bar"><i style="width:${r.holesPlayed?Math.min(100,c/r.holesPlayed*300):0}%"></i></div></td><td class="n">${c}</td></tr>`});
@@ -477,7 +482,7 @@ const BET_KINDS={
 };
 const fmtMoney=(n)=>{const v=Math.round(Math.abs(n)*100)/100;return '$'+(v%1?v.toFixed(2):v.toFixed(0))};
 const fmtRange=(t)=>t.start_date===t.end_date?fmtDate(t.start_date):fmtDate(t.start_date)+' – '+fmtDate(t.end_date);
-const tripStatus=(t)=>{const d=today();return d<t.start_date?'upcoming':d>t.end_date?'done':'live'};
+const tripStatus=(t)=>{if(t.ended_at)return 'done';const d=today();return d<t.start_date?'upcoming':d>t.end_date?'done':'live'};
 const tripRounds=(t,uid)=>(S.rounds[uid]||[]).filter(r=>r.complete&&r.date>=t.start_date&&r.date<=t.end_date);
 const curTrip=()=>S.trips.find(x=>x.id===S.arg);
 
@@ -554,9 +559,13 @@ function tripsView(){
  if(!S.tripsOk)return h+`<div class="card note"><b>Trips need one more database step</b><p style="margin:4px 0 0">Run <b>supabase/trips.sql</b> in the Supabase SQL Editor, then reopen the app.</p></div>`;
  h+=`<button class="primary wide" style="margin-bottom:14px" data-nav="newtrip">Plan a trip</button>`;
  if(!S.trips.length)return h+`<div class="card empty"><b>No trips yet</b>Create a trip, add your friends, and set side bets like fewest putts. Rounds posted during the trip count automatically.</div>`;
- S.trips.forEach(t=>{
+ const done=S.trips.filter(t=>tripStatus(t)==='done'),active=S.trips.filter(t=>tripStatus(t)!=='done'),showDone=S.tripsFilter==='done';
+ h+=`<div class="ttabs" style="grid-template-columns:1fr 1fr" role="tablist" aria-label="Trips"><button role="tab" data-tfilter="active" aria-selected="${!showDone}">Current trips${active.length?`<span class="cnt">${active.length}</span>`:''}</button><button role="tab" data-tfilter="done" aria-selected="${showDone}">Completed trips${done.length?`<span class="cnt">${done.length}</span>`:''}</button></div>`;
+ const list=showDone?done:active;
+ if(!list.length)return h+`<div class="card empty"><b>${showDone?'No completed trips yet':'No current trips'}</b>${showDone?'Trips show up here once they’re over or the organizer ends them.':'Plan one above.'}</div>`;
+ list.forEach(t=>{
   const st=tripStatus(t),mem=S.tripMembers[t.id]||[],nb=(S.bets[t.id]||[]).length;
-  h+=`<button class="card item" data-trip="${esc(t.id)}"><div class="mid"><b>${esc(t.name)}</b><span>${fmtRange(t)} · ${mem.length} player${mem.length===1?'':'s'} · ${nb} bet${nb===1?'':'s'}</span></div><span class="tag ${st==='live'?'gold':''}">${st==='live'?'Happening now':st==='upcoming'?'Upcoming':'Finished'}</span></button>`;
+  h+=`<button class="card item" data-trip="${esc(t.id)}"><div class="mid"><b>${esc(t.name)}</b><span>${fmtRange(t)} · ${mem.length} player${mem.length===1?'':'s'} · ${nb} bet${nb===1?'':'s'}</span></div><span class="tag ${st==='live'?'gold':''}">${st==='live'?'Happening now':st==='upcoming'?'Upcoming':'Completed'}</span></button>`;
  });
  return h;
 }
@@ -580,6 +589,10 @@ function tripView(id){
  const tab=S.tripTabs[t.id]||'bets',exN=(S.expenses[t.id]||[]).length;
  const rs=mem.flatMap(u=>tripRounds(t,u)).sort((a,b)=>b.date.localeCompare(a.date)||(b.at||0)-(a.at||0));
  const tabs=[['bets','Bets',bets.length],['receipts','Receipts',exN],['rounds','Rounds',rs.length],['players','Players',mem.length]];
+ // Ending a trip: the organizer can end it early (later rounds stop counting and settle-up is final).
+ if(st==='done')h+=`<div class="card note item" style="margin-bottom:12px"><div class="mid"><b>Trip completed</b><span>${t.ended_at?'Ended '+fmtDate(t.end_date)+'. ':''}Bets and settle-ups are final.</span></div>${owner&&t.ended_at?`<button data-act="reopentrip">Reopen</button>`:''}</div>`;
+ else if(owner)h+=S.confirm==='endtrip'?`<div class="card note" style="margin-bottom:12px"><p style="margin-top:0">End the trip now? Rounds posted after today won’t count toward bets, and settle-ups become final.</p><div class="row"><button class="danger" data-act="endtrip">End trip</button><button data-act="cancelc">Not yet</button></div></div>`
+  :`<button class="wide" style="margin-bottom:12px" data-act="ask" data-c="endtrip">End trip</button>`;
  h+=`<div class="ttabs" role="tablist" aria-label="Trip sections">${tabs.map(([k,l,n])=>`<button role="tab" data-ttab="${k}" aria-selected="${tab===k}">${l}${n?`<span class="cnt">${n}</span>`:''}</button>`).join('')}</div>`;
 
  if(tab==='bets'){
@@ -890,6 +903,10 @@ function holeView(){
  <label>Putts${h.putts==null?` <span class="${S.puttsNag?'neg':'hint'}" style="font-weight:400;font-size:14px">(required to continue)</span>`:''}</label><div class="stepper${S.puttsNag&&h.putts==null?' need':''}"><button data-pt="-1" aria-label="Fewer putts">−</button><output>${h.putts==null?'–':h.putts}</output><button data-pt="1" aria-label="More putts">+</button></div>
  <button class="toggle" data-tg="sc" aria-pressed="${h.sc}"><span>Approach with a scoring club (wedge or short iron)</span><b>${h.sc?'Yes':'No'}</b></button>
  <button class="toggle" data-tg="ud" aria-pressed="${h.ud}"><span>Missed an easy up-and-down</span><b>${h.ud?'Yes':'No'}</b></button>
+ <div class="row" style="margin-top:4px;align-items:flex-start">
+  <div><label>Beers 🍺</label><div class="stepper sm"><button data-beer="-1" aria-label="One less beer">−</button><output>${h.beer||0}</output><button data-beer="1" aria-label="One more beer">+</button></div></div>
+  <div><label>GB</label><div class="stepper sm"><button data-gb="-1" aria-label="One less GB">−</button><output>${h.gb||0}</output><button data-gb="1" aria-label="One more GB">+</button></div></div>
+ </div>
  <div class="chips">${p?(f.length?f.map(r=>`<span class="chip">${r.k==='r3'?'You Suck':'Nice Work Idiot'} - ${r.n.replace('No ','')}</span>`).join(''):'<span class="chip ok">Clean hole</span>'):''}</div></div>
  <div class="row"><button data-act="prev" ${hidx===0?'disabled':''}>Previous</button><button class="primary" data-act="next">${hidx===draft.holes.length-1?'Finish round':'Next hole'}</button></div>
  <p style="text-align:center"><button class="link" data-act="tosum">Review round</button></p>`;
@@ -899,6 +916,7 @@ function summaryView(){
  const ix=S.status==='ready'?myIndex():null,t=calc(draft,ix);
  let s=`${header('Round summary',draft.course+' · '+fmtDate(draft.date))}
  <div class="card big"><div><b>${t.score}</b><span>Strokes (${rel(t.score-t.parPlayed)})</span></div><div><b>${t.net!=null?t.net:'—'}</b><span>Net${t.ch!=null?' (CH '+t.ch+')':''}</span></div><div><b>${t.putts==null?'—':t.putts}</b><span>Putts</span></div><div><b>${t.t5}</b><span>Tiger 5 misses</span></div></div>
+ ${holeSum(draft,'beer')||holeSum(draft,'gb')?`<div class="tags" style="margin:-2px 0 10px">${extrasTags(draft)}</div>`:''}
  <div class="card"><table>`;
  RULES.forEach(r=>{const c=t.per[r.k];s+=`<tr><td>${r.n}<div class="bar"><i style="width:${t.holesPlayed?Math.min(100,c/t.holesPlayed*300):0}%"></i></div></td><td class="n">${c}</td></tr>`});
  s+=`</table></div>
@@ -974,6 +992,7 @@ document.addEventListener('click',async e=>{
  if(d.bs){S.betScoring=d.bs;return render()}
  if(d.win)return toggleWinner(d.win,d.u);
  if(d.pickbet)return pickBoard(d.pickbet,+d.opt);
+ if(d.tfilter){S.tripsFilter=d.tfilter;return render()}
  if(d.ttab){S.tripTabs[S.arg]=d.ttab;S.confirm=null;S.receiptView=null;return render()}
  if(d.expaid){S.exPaidBy=d.expaid;return render()}
  if(d.exsplit){const t=curTrip(),mem=t?S.tripMembers[t.id]||[]:[];const s=new Set(S.exSplit||mem);s.has(d.exsplit)?s.delete(d.exsplit):s.add(d.exsplit);S.exSplit=mem.filter(u=>s.has(u));return render()}
@@ -1057,6 +1076,15 @@ document.addEventListener('click',async e=>{
  if(a==='cancelsettle'){S.settling=null;return render()}
  if(a==='settlebet'){S.settling=null;return boardUpdate(d.id,{status:'settled',winning_option:+d.opt,settled_at:new Date().toISOString()},'Bet settled')}
  if(a==='delboard'){S.confirm=null;const {error}=await sb.from('board_bets').delete().eq('id',d.id);if(error)return fail(error,'Couldn’t delete the bet.');toast('Bet deleted');return loadAll()}
+ if(a==='endtrip'||a==='reopentrip'){
+  S.confirm=null;const t=curTrip();if(!t)return;
+  // Ending pulls the last day in to today so later rounds stop counting.
+  const patch=a==='endtrip'?{ended_at:new Date().toISOString(),end_date:[t.start_date,[t.end_date,today()].sort()[0]].sort()[1]}
+   :{ended_at:null,end_date:[t.end_date,today()].sort()[1]}; // reopening runs at least through today
+  const {error}=await sb.from('trips').update(patch).eq('id',t.id);
+  if(error)return fail(error,a==='endtrip'?'Couldn’t end the trip.':'Couldn’t reopen the trip.');
+  toast(a==='endtrip'?'Trip ended':'Trip reopened');return loadAll();
+ }
  if(a==='createtrip')return createTrip();
  if(a==='addbet')return addBet();
  if(a==='delbet'){S.confirm=null;const {error}=await sb.from('bets').delete().eq('id',d.id);if(error)return fail(error,'Couldn’t delete the bet.');return loadAll()}
@@ -1068,7 +1096,7 @@ document.addEventListener('click',async e=>{
   const k=$('#course').value,c=COURSES[k],n=S.nsel,tee=$('#tee').value;
   const off=n==='back'?9:0,len=n==='18'?18:9;
   draft={id:newId(),course:c?c.name:($('#cname').value.trim()||'My round'),tee:c?tee:'',rating:$('#rating').value.trim(),slope:$('#slope').value.trim(),date:$('#rdate').value||today(),nine:n==='18'?null:n,
-   holes:Array.from({length:len},(_,j)=>{const i=j+off;return c?{par:c.par[i],yds:c.tees[tee].yds[i],si:c.si[i],score:null,putts:null,sc:false,ud:false}:{par:4,si:i+1,score:null,putts:null,sc:false,ud:false}})};
+   holes:Array.from({length:len},(_,j)=>{const i=j+off;return c?{par:c.par[i],yds:c.tees[tee].yds[i],si:c.si[i],score:null,putts:null,sc:false,ud:false,beer:0,gb:0}:{par:4,si:i+1,score:null,putts:null,sc:false,ud:false,beer:0,gb:0}})};
   hidx=0;playView='hole';saveDraft();return render();
  }
  if(a==='post')return postRound();
@@ -1084,6 +1112,8 @@ document.addEventListener('click',async e=>{
  else if(d.sc)h.score=Math.max(1,(h.score==null?h.par:h.score)+ +d.sc);
  else if(d.pt){h.putts=h.putts==null?(+d.pt>0?1:0):Math.max(0,h.putts+ +d.pt);if(h.score==null)h.score=h.par}
  else if(d.tg){h[d.tg]=!h[d.tg];if(h.score==null)h.score=h.par}
+ else if(d.beer)h.beer=Math.max(0,(h.beer||0)+ +d.beer);
+ else if(d.gb)h.gb=Math.max(0,(h.gb||0)+ +d.gb);
  else if(a==='prev'){S.puttsNag=false;hidx--}
  else if(a==='next'){if(needPutts())return;S.puttsNag=false;if(h.score==null)h.score=h.par;if(hidx===draft.holes.length-1)playView='sum';else hidx++}
  else return;
