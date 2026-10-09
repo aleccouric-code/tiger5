@@ -797,7 +797,16 @@ document.addEventListener('keydown',e=>{
 /* ---------- start up ---------- */
 window.addEventListener('online',()=>{if(S.status==='ready'){flushOutbox();if(S.offline)loadAll()}});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&S.status==='ready'&&!S.busy)loadAll()});
-if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(()=>{});
+if('serviceWorker' in navigator&&location.protocol==='https:'){
+ // When a new version takes over, reload once so the new code runs right away
+ // (skipped on the very first install, when nothing was running before).
+ const hadController=!!navigator.serviceWorker.controller;let reloaded=false;
+ navigator.serviceWorker.addEventListener('controllerchange',()=>{if(hadController&&!reloaded&&!S.busy){reloaded=true;location.reload()}});
+ navigator.serviceWorker.register('sw.js').then(reg=>{
+  // Installed home-screen apps rarely restart, so look for updates whenever the app is reopened.
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')reg.update().catch(()=>{})});
+ }).catch(()=>{});
+}
 
 (async()=>{
  captureInvite();

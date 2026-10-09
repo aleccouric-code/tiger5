@@ -1,13 +1,19 @@
 // Service worker: keeps the app usable on the course with weak signal.
 // Bump VERSION whenever you change app files so phones pick up the update.
-const VERSION = 'tiger5-v2';
+const VERSION = 'tiger5-v3';
 const SHELL = [
   './', 'index.html', 'app.js', 'config.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  // cache: 'reload' skips the browser's HTTP cache so a new version never
+  // starts out with stale copies of the app files.
+  e.waitUntil(
+    caches.open(VERSION)
+      .then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' }))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', (e) => {
@@ -27,8 +33,10 @@ self.addEventListener('fetch', (e) => {
 
   if (url.origin === location.origin) {
     // App files: network first so updates arrive, cache when offline.
+    // 'no-cache' makes the browser check GitHub for a newer copy every time
+    // instead of reusing one from its own cache for up to 10 minutes.
     e.respondWith(
-      fetch(req)
+      fetch(req, { cache: 'no-cache' })
         .then((res) => { const copy = res.clone(); caches.open(VERSION).then((c) => c.put(req, copy)); return res; })
         .catch(() => caches.match(req).then((r) => r || caches.match('index.html')))
     );
