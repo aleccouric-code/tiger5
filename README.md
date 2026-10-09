@@ -24,12 +24,12 @@ Golf scoring for you and your friends: Tiger 5 mistake tracking, a World Handica
 Players sign in with an email and password. The app never sends email, which avoids Supabase's built-in sender (limited to a couple of emails an hour).
 
 1. **Authentication → Sign In / Providers → Email**: make sure Email is enabled and turn **off** **Confirm email**. Save.
-2. **Authentication → URL Configuration**: set **Site URL** to `https://aleccouric-code.github.io/tiger5/`.
+2. **Authentication → URL Configuration**: set **Site URL** to `https://app.sandie.app/`.
 
 **Forgotten passwords:** there's no self-service reset yet. In **Authentication → Users**, delete that player's account so they can sign up again with the same email. Their rounds and friendships are deleted with it, so only do this for someone who hasn't posted much. A proper reset flow needs custom SMTP (for example Resend) under **Authentication → Emails → SMTP Settings**.
 
 ### 3. Publish
-Commit everything to the `tiger5` repo and push. GitHub Pages serves `index.html` at https://aleccouric-code.github.io/tiger5/.
+Commit everything to the `tiger5` repo and push. GitHub Pages serves `index.html` at https://app.sandie.app/ (set by the `CNAME` file; the old github.io address redirects there). The website and stats portal live in the separate `sandie-site` repo at https://sandie.app.
 
 Whenever you change app files later, bump `VERSION` at the top of `sw.js` so installed phones pick up the update.
 
