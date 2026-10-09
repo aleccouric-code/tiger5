@@ -89,7 +89,7 @@ The course picker is a search box with state buttons (VA, MD, NC, SC) and an All
 
 ## Group rounds, Leaderboard, Venmo
 - **Group rounds:** pick up to 3 friends under **Playing With** when starting a round, then score everyone on each hole. Friends' rounds post to their cards marked "Scored by", and they (or you) can delete them.
-- **Leaderboard** tab: you and your friends ranked across 13 categories, filterable to This Year or the Last 30 Days.
+- **Leaderboard** tab: you and your friends ranked by handicap, scoring, Tiger 5, putting, birdies, rounds, trophies, poo rounds, beers, shotguns, rips, thrown clubs and mushrooms, filterable to This Year or the Last 30 Days.
 - **Venmo:** add your Venmo username on the Me tab. Only friends can see it, and it shows as a Venmo link next to what people owe you.
 - `supabase/group.sql` adds `rounds.entered_by` / `rounds.scorecards`, the friends-only `profile_private` table and the private `scorecards` bucket (already applied to the live database).
 
