@@ -325,12 +325,18 @@ function setupView(){
 function allFeedRounds(){
  return [S.me,...friendIds()].flatMap(id=>S.rounds[id]||[]).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.at||0)-(a.at||0));
 }
+// Poo rating for a round's Tiger 5 misses: 4–7 one, 8–10 two, 11+ three.
+const pooCount=(t5)=>t5>=11?3:t5>=8?2:t5>=4?1:0;
+function pooBadge(t5){
+ const n=pooCount(t5);if(!n)return '';
+ return `<span class="tag poo" role="img" aria-label="Poo rating ${n} of 3: ${t5} Tiger 5 misses" title="${t5} Tiger 5 misses">${'💩'.repeat(n)}</span>`;
+}
 function roundItem(r,showWho=true){
  return `<button class="card item" data-round="${esc(r.uid)}/${esc(r.id)}">
   ${showWho?av(r.uid):''}
   <div class="mid"><b>${showWho?esc(r.uid===S.me?'You':handle(r.uid))+' · ':''}${esc(r.course)}</b>
   <span>${fmtDate(r.date)}${r.n===9?' · 9 holes':''}${r.tee?' · '+esc(r.tee):''}</span>
-  <div class="tags">${r.t5>3?'<span class="tag poo" role="img" aria-label="Poo round: more than 3 Tiger 5 misses" title="More than 3 Tiger 5 misses">💩</span>':''}<span class="tag ${r.t5>=Math.round(r.n/2)?'red':''}">Tiger 5 misses ${r.t5}</span>${r.diff!=null?`<span class="tag gold">Diff ${fmtDiff(r.diff)}</span>`:''}${r.pending?'<span class="tag red">Waiting to post</span>':''}</div></div>
+  <div class="tags">${pooBadge(r.t5)}<span class="tag ${r.t5>=Math.round(r.n/2)?'red':''}">Tiger 5 misses ${r.t5}</span>${r.diff!=null?`<span class="tag gold">Diff ${fmtDiff(r.diff)}</span>`:''}${r.pending?'<span class="tag red">Waiting to post</span>':''}</div></div>
   <div class="score"><b>${r.score}</b><span>${r.complete?rel(r.score-r.parPlayed):r.holesPlayed+' holes'}</span></div></button>`;
 }
 function feedView(){
