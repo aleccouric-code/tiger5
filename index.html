@@ -15,8 +15,28 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=DM+Serif+Display:ital@0;1&family=Manrope:wght@500;700&display=swap">
 <style>
+/* Splash screen ("The 19th — loading" design): shown for 3 s once per launch. */
+#splash{position:fixed;inset:0;z-index:100;background:#0F2A1D;color:#F3EAD3;font-family:Manrope,system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:calc(120px + env(safe-area-inset-top)) 32px calc(64px + env(safe-area-inset-bottom));overflow:hidden;transition:opacity .45s ease;cursor:pointer}
+#splash.out{opacity:0;pointer-events:none}
+#splash .s-hill{position:absolute;left:-120px;right:-120px;bottom:-260px;height:520px;border-radius:50%;background:#16392A}
+#splash .s-hill.two{left:-60px;right:-60px;bottom:-340px;background:#1C4533}
+#splash .s-top,#splash .s-bottom{display:flex;flex-direction:column;align-items:center;position:relative}
+#splash .s-top{gap:36px}
+#splash .s-bottom{gap:18px}
+#splash .s-emblem{width:168px;height:168px;border-radius:50%;border:2px solid #E3B04B;display:flex;align-items:center;justify-content:center}
+#splash h1{margin:0;font-family:"DM Serif Display",Georgia,serif;font-weight:400;font-size:64px;line-height:1;letter-spacing:-1px;color:#F3EAD3}
+#splash h1 em{font-style:italic;color:#E3B04B}
+#splash .s-tag{margin:14px 0 0;font-size:13px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#CFC4A8;text-align:center}
+#splash .s-ld{display:flex;gap:10px;align-items:center}
+#splash .s-ld span{width:10px;height:10px;border-radius:50%;background:#F3EAD3;display:block;animation:sdot 1.2s ease-in-out infinite}
+#splash .s-ld span:nth-child(2){animation-delay:.15s}
+#splash .s-ld span:nth-child(3){animation-delay:.3s;background:#E3B04B}
+#splash .s-msg{margin:0;font-size:15px;color:#E6DCC2}
+@keyframes sdot{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-6px)}}
+@media (max-height:640px){#splash{padding-top:calc(60px + env(safe-area-inset-top))}#splash h1{font-size:52px}#splash .s-emblem{width:140px;height:140px}}
+@media (prefers-reduced-motion:reduce){#splash .s-ld span{animation:none;opacity:.8}#splash{transition:none}}
 /* Layout: single phone-width column, sticky header, fixed bottom tab bar */
 :root{
  --bg:#eef3ec;--card:#fff;--ink:#16261d;--mute:#5d7064;--line:#cfdacb;--green:#2e6b45;--on-green:#f4faf5;
@@ -185,6 +205,37 @@ img.av{object-fit:cover;background:var(--line)}
 </style>
 </head>
 <body>
+<div id="splash" role="status" aria-label="The 19th is loading">
+ <div class="s-hill" aria-hidden="true"></div><div class="s-hill two" aria-hidden="true"></div>
+ <div class="s-top">
+  <div class="s-emblem">
+   <svg width="104" height="120" viewBox="0 0 104 120" fill="none" aria-hidden="true">
+    <line x1="34" y1="10" x2="34" y2="104" stroke="#F3EAD3" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M36 12 L92 28 L36 46 Z" fill="#E3B04B"/>
+    <text x="56" y="34" font-family="DM Serif Display, serif" font-size="17" fill="#0F2A1D" text-anchor="middle">19</text>
+    <ellipse cx="44" cy="106" rx="34" ry="6" fill="#16392A"/>
+    <circle cx="66" cy="98" r="9" fill="#F3EAD3"/>
+    <circle cx="63" cy="95" r="1.2" fill="#C9BFA6"/><circle cx="68" cy="96" r="1.2" fill="#C9BFA6"/>
+    <circle cx="65" cy="100" r="1.2" fill="#C9BFA6"/><circle cx="70" cy="101" r="1.2" fill="#C9BFA6"/>
+   </svg>
+  </div>
+  <div><h1>The <em>19th</em></h1><p class="s-tag">Trips · Scores · The Tab</p></div>
+ </div>
+ <div class="s-bottom">
+  <div class="s-ld" aria-hidden="true"><span></span><span></span><span></span></div>
+  <p class="s-msg">Pouring the first round…</p>
+ </div>
+</div>
+<script>
+// Splash: 3 seconds once per launch (skipped on reloads within the same session); tap to skip.
+(function(){
+ var s=document.getElementById('splash'),seen=false;
+ try{seen=sessionStorage.getItem('t19-splash')==='1';sessionStorage.setItem('t19-splash','1')}catch(e){}
+ if(seen){s.remove();return}
+ var hide=function(){if(!s.isConnected)return;s.classList.add('out');setTimeout(function(){s.remove()},500)};
+ s.addEventListener('click',hide);setTimeout(hide,3000);
+})();
+</script>
 <main id="app"></main>
 <nav class="tabs" id="tabs" aria-label="Sections"></nav>
 <div id="toast" class="toast" role="status" hidden></div>
