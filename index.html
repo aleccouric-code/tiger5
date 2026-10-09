@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tiger 5 Scorecard</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&display=swap">
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#eef3ec;--card:#fff;--ink:#16261d;--mute:#5d7064;--line:#cfdacb;--green:#2e6b45;--red:#c9342a;--redbg:#fbe4e1;--gbg:#dcebdf}
+:root:not([data-theme="light"]){}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#13201a;--card:#1b2c23;--ink:#e6efe8;--mute:#93a99b;--line:#2f4538;--green:#6fc28b;--red:#ff7a6e;--redbg:#3c2420;--gbg:#23402d}}
+:root[data-theme="dark"]{--bg:#13201a;--card:#1b2c23;--ink:#e6efe8;--mute:#93a99b;--line:#2f4538;--green:#6fc28b;--red:#ff7a6e;--redbg:#3c2420;--gbg:#23402d}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*:before,*:after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 "Bricolage Grotesque",system-ui,sans-serif}
+main{max-width:520px;margin:0 auto;padding:16px}
+h1{font-size:26px;font-weight:800;margin:4px 0 2px}
+h2{font-size:18px;margin:20px 0 8px}
+.sub{color:var(--mute);margin:0 0 16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+label{display:block;font-weight:600;margin:10px 0 4px}
+input[type=text],select{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:10px 14px;min-height:44px}
+button:focus-visible,input:focus-visible{outline:3px solid var(--green);outline-offset:2px}
+.primary{background:var(--green);color:var(--bg);border-color:var(--green);font-weight:600}
+.row{display:flex;gap:8px;align-items:center}
+.row>*{flex:1}
+.seg button[aria-pressed=true]{background:var(--green);color:var(--bg);border-color:var(--green)}
+.hole-head{display:flex;justify-content:space-between;align-items:baseline}
+.hole-head b{font-size:40px;font-weight:800;line-height:1}
+.stepper{display:flex;align-items:center;gap:10px}
+.stepper button{width:52px;flex:none;font-size:24px}
+.stepper output{flex:1;text-align:center;font-size:44px;font-weight:800}
+.toggle{display:flex;justify-content:space-between;align-items:center;width:100%;text-align:left;margin-top:8px}
+.toggle[aria-pressed=true]{background:var(--gbg);border-color:var(--green)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;min-height:28px;margin-top:10px}
+.chip{background:var(--redbg);color:var(--red);border-radius:99px;padding:3px 10px;font-weight:600;font-size:14px}
+.ok{background:var(--gbg);color:var(--green)}
+.strip{display:grid;grid-template-columns:repeat(9,1fr);gap:4px;margin:10px 0}
+.strip button{padding:6px 0;min-height:40px;font-size:14px;border-radius:8px}
+.strip .cur{outline:2px solid var(--ink)}
+.strip .bad{background:var(--redbg);border-color:var(--red);color:var(--red)}
+.strip .done{background:var(--gbg)}
+.big{display:flex;gap:10px}
+.big div{flex:1;text-align:center}
+.big b{display:block;font-size:34px;font-weight:800}
+.big span{color:var(--mute);font-size:14px}
+table{width:100%;border-collapse:collapse}
+td{padding:8px 0;border-bottom:1px solid var(--line)}
+td:last-child{text-align:right;font-weight:800}
+.bar{height:8px;border-radius:4px;background:var(--gbg);margin-top:4px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--red)}
+.hist{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.link{border:0;background:none;color:var(--mute);text-decoration:underline;min-height:0;padding:4px}
+.hide{display:none}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<script>
+const RULES=[
+ {k:'r1',n:'No 6s on par-5s',t:(h)=>h.par===5&&h.score>=6},
+ {k:'r2',n:'No doubles',t:(h)=>h.score>=h.par+2},
+ {k:'r3',n:'No 3-putts',t:(h)=>h.putts>=3},
+ {k:'r4',n:'No bogeys with scoring clubs',t:(h)=>h.sc&&h.score>h.par},
+ {k:'r5',n:'No missed easy up-and-downs',t:(h)=>h.ud}
+];
+const COURSES={sr:{name:'South Riding Golf Club',
+ par:[5,4,5,4,3,4,3,4,4,5,3,4,4,3,5,4,4,4],
+ si:[6,16,14,2,8,12,10,18,4,15,13,3,1,11,7,9,17,5],
+ tees:{
+  Championship:{info:'7,148 yds · 74.9/140',yds:[593,397,546,431,232,406,206,345,474,523,199,404,426,206,569,404,354,433]},
+  Tournament:{info:'6,473 yds · 71.9/133',yds:[542,373,501,392,195,366,188,328,404,494,153,370,375,189,524,376,308,395]},
+  Medal:{info:'6,070 yds · 70.0/128',yds:[542,373,460,346,153,366,142,328,371,444,153,370,375,141,524,327,308,347]},
+  Club:{info:'5,720 yds · 68.3/126',yds:[503,363,460,346,153,322,142,282,371,444,129,329,332,141,472,327,257,347]}
+ }}};
+const KEY='tiger5-rounds-v1';
+let rounds=[],round=null,idx=0,view='home';
+try{rounds=JSON.parse(localStorage.getItem(KEY)||'[]')}catch(e){rounds=[]}
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(rounds))}catch(e){}};
+const $=(s)=>document.querySelector(s);
+const played=(h)=>h.score!=null;
+const fails=(h)=>played(h)?RULES.filter(r=>r.t(h)):[];
+const esc=(s)=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const rel=(n)=>n===0?'E':(n>0?'+'+n:''+n);
+
+function totals(r){
+ const ph=r.holes.filter(played);
+ const score=ph.reduce((a,h)=>a+h.score,0),par=ph.reduce((a,h)=>a+h.par,0);
+ const putts=ph.reduce((a,h)=>a+(h.putts||0),0);
+ const per={};RULES.forEach(x=>per[x.k]=ph.filter(h=>x.t(h)).length);
+ const t5=Object.values(per).reduce((a,b)=>a+b,0);
+ return {score,par,putts,per,t5,n:ph.length};
+}
+
+function render(){
+ const a=$('#app');
+ if(view==='home')a.innerHTML=home();
+ else if(view==='hole')a.innerHTML=holeView();
+ else a.innerHTML=summary();
+ window.scrollTo(0,0);
+}
+
+function home(){
+ let h=`<h1>Tiger 5 Scorecard</h1><p class="sub">Track your score and the five mistakes that cost you strokes.</p>
+ <div class="card"><label for="course">Course</label><select id="course"><option value="sr">South Riding Golf Club (Loudoun, VA)</option><option value="">Other course</option></select>
+ <label for="tee">Tees</label><select id="tee">${Object.entries(COURSES.sr.tees).map(([k,v])=>`<option value="${k}"${k==='Club'?' selected':''}>${k} · ${v.info}</option>`).join('')}</select>
+ <label for="cname">Other course name</label><input type="text" id="cname" placeholder="Only needed for other courses">
+ <label>Holes</label><div class="row seg" id="nseg"><button aria-pressed="false" data-n="9">9</button><button aria-pressed="true" data-n="18">18</button></div>
+ <button class="primary" style="width:100%;margin-top:14px" id="start">Start round</button></div>`;
+ if(round&&!round.done)h+=`<button style="width:100%;margin-bottom:12px" id="resume">Resume round at ${esc(round.course)}</button>`;
+ h+=`<h2>Past rounds</h2>`;
+ if(!rounds.length)h+=`<p class="sub">No rounds yet. Finish one and it shows up here.</p>`;
+ rounds.forEach((r,i)=>{const t=totals(r);
+  h+=`<div class="card hist"><div><b>${esc(r.course)}</b><br><span class="sub" style="margin:0">${r.date} · ${t.score} (${rel(t.score-t.par)}) · Tiger 5 misses: ${t.t5}</span></div><button class="link" data-del="${i}">Delete</button></div>`;});
+ return h;
+}
+
+function holeView(){
+ const h=round.holes[idx],f=fails(h),p=played(h);
+ let s=`<div class="hole-head"><h1>${esc(round.course)}</h1><button class="link" id="finish">Finish</button></div>
+ <div class="strip" style="grid-template-columns:repeat(${round.holes.length>9?9:round.holes.length},1fr)">`;
+ round.holes.forEach((x,i)=>s+=`<button data-go="${i}" class="${i===idx?'cur ':''}${fails(x).length?'bad':played(x)?'done':''}" aria-label="Hole ${i+1}">${i+1}</button>`);
+ s+=`</div><div class="card"><div class="hole-head"><b>Hole ${idx+1}</b><span class="sub" style="margin:0">${p?rel(h.score-h.par)+' to par':'not scored'}</span></div>
+ ${h.yds?`<p class="sub" style="margin:4px 0 0">${h.yds} yds from the ${esc(round.tee)} tees · stroke index ${h.si}</p>`:''}<label>Par</label><div class="row seg">${[3,4,5].map(n=>`<button data-par="${n}" aria-pressed="${h.par===n}">${n}</button>`).join('')}</div>
+ <label>Strokes</label><div class="stepper"><button data-sc="-1" aria-label="Fewer strokes">−</button><output>${p?h.score:'–'}</output><button data-sc="1" aria-label="More strokes">+</button></div>
+ <label>Putts</label><div class="stepper"><button data-pt="-1" aria-label="Fewer putts">−</button><output>${h.putts}</output><button data-pt="1" aria-label="More putts">+</button></div>
+ <button class="toggle" data-tg="sc" aria-pressed="${h.sc}"><span>Approach with a scoring club (wedge or short iron)</span><b>${h.sc?'Yes':'No'}</b></button>
+ <button class="toggle" data-tg="ud" aria-pressed="${h.ud}"><span>Missed an easy up-and-down</span><b>${h.ud?'Yes':'No'}</b></button>
+ <div class="chips">${p?(f.length?f.map(r=>`<span class="chip">${r.k==='r3'?'You Suck':'Nice Work Idiot'} - ${r.n.replace('No ','')}</span>`).join(''):'<span class="chip ok">Clean hole</span>'):''}</div></div>
+ <div class="row"><button id="prev" ${idx===0?'disabled':''}>Previous</button><button class="primary" id="next">${idx===round.holes.length-1?'Finish round':'Next hole'}</button></div>`;
+ return s;
+}
+
+function summary(){
+ const t=totals(round);
+ let s=`<h1>Round summary</h1><p class="sub">${esc(round.course)} · ${round.date}</p>
+ <div class="card big"><div><b>${t.score}</b><span>Strokes (${rel(t.score-t.par)})</span></div><div><b>${t.putts}</b><span>Putts</span></div><div><b>${t.t5}</b><span>Tiger 5 misses</span></div></div>
+ <div class="card"><table>`;
+ RULES.forEach(r=>{const c=t.per[r.k];s+=`<tr><td>${r.n}<div class="bar"><i style="width:${t.n?Math.min(100,c/t.n*100*3):0}%"></i></div></td><td>${c}</td></tr>`;});
+ s+=`</table></div><p class="sub">Fewer misses is better. Every hole where you break a rule counts once per rule.</p>
+ <button class="primary" style="width:100%;margin-bottom:8px" id="save">Save round</button>
+ <button style="width:100%" id="back">Back to holes</button>`;
+ return s;
+}
+
+document.addEventListener('click',e=>{
+ const b=e.target.closest('button');if(!b)return;
+ const d=b.dataset;
+ if(b.parentElement&&b.parentElement.id==='nseg'){[...b.parentElement.children].forEach(x=>x.setAttribute('aria-pressed',x===b));return}
+ if(b.id==='start'){
+  const n=+document.querySelector('#nseg [aria-pressed=true]').dataset.n;
+  const c=COURSES[$('#course').value],tee=$('#tee').value,nm=$('#cname').value.trim();
+  round={course:c?c.name:(nm||'My round'),tee:c?tee:'',date:new Date().toLocaleDateString(),
+   holes:Array.from({length:n},(_,i)=>c?{par:c.par[i],yds:c.tees[tee].yds[i],si:c.si[i],score:null,putts:2,sc:false,ud:false}:{par:4,score:null,putts:2,sc:false,ud:false})};
+  idx=0;view='hole';return render();
+ }
+ if(b.id==='resume'){view='hole';return render()}
+ if(d.del!=null){rounds.splice(+d.del,1);save();return render()}
+ if(d.go!=null){idx=+d.go;return render()}
+ const h=round&&round.holes[idx];
+ if(d.par){h.par=+d.par;if(played(h)===false)return render();return render()}
+ if(d.sc){h.score=Math.max(1,(h.score==null?h.par:h.score)+ +d.sc);return render()}
+ if(d.pt){h.putts=Math.max(0,h.putts+ +d.pt);if(h.score==null)h.score=h.par;return render()}
+ if(d.tg){h[d.tg]=!h[d.tg];if(h.score==null)h.score=h.par;return render()}
+ if(b.id==='prev'){idx--;return render()}
+ if(b.id==='next'){if(h.score==null)h.score=h.par;if(idx===round.holes.length-1){view='sum'}else idx++;return render()}
+ if(b.id==='finish'){view='sum';return render()}
+ if(b.id==='back'){view='hole';return render()}
+ if(b.id==='save'){round.done=true;rounds.unshift(round);save();round=null;view='home';return render()}
+});
+render();
+</script>
+</body>
+</html>
