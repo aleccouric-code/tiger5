@@ -43,6 +43,16 @@ rn:{name:'Reston National Golf Course',par:[4,5,3,4,5,3,4,4,4,4,3,4,4,4,5,3,4,4]
  Gold:T('6,880 yds · 73.0/131',[394,536,183,422,522,208,416,396,408,462,172,426,443,377,527,202,414,372])}}
 };
 
+// The original courses are in Virginia; Myrtle Beach (SC) and more Virginia courses come from courses.js.
+for(const k in COURSES)COURSES[k].state=COURSES[k].state||'VA';
+Object.assign(COURSES,window.EXTRA_COURSES||{});
+const STATE_NAMES={SC:'South Carolina',VA:'Virginia'};
+// Course picker options grouped by state (alphabetical), courses alphabetical within each.
+function courseOptions(){
+ const by={};Object.entries(COURSES).forEach(([k,c])=>(by[c.state]=by[c.state]||[]).push([k,c]));
+ return Object.keys(by).sort((a,b)=>(STATE_NAMES[a]||a).localeCompare(STATE_NAMES[b]||b)).map(s=>`<optgroup label="${esc(STATE_NAMES[s]||s)}">${by[s].sort((a,b)=>a[1].name.localeCompare(b[1].name)).map(([k,c])=>`<option value="${k}" ${k==='sr'?'selected':''}>${esc(c.name)}</option>`).join('')}</optgroup>`).join('');
+}
+
 /* ---------- helpers ---------- */
 const $=(s)=>document.querySelector(s);
 const esc=(s)=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -372,9 +382,9 @@ function setupView(){
 function allFeedRounds(){
  return [S.me,...friendIds()].flatMap(id=>S.rounds[id]||[]).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.at||0)-(a.at||0));
 }
-// Per-hole extras (beers, GB) added up for a round.
+// Per-hole extras (beers, rips; stored as "gb") added up for a round.
 const holeSum=(r,k)=>(r.holes||[]).reduce((a,h)=>a+(+h[k]||0),0);
-const extrasTags=(r)=>{const b=holeSum(r,'beer'),g=holeSum(r,'gb');return (b?`<span class="tag gold">🍺 ${b}</span>`:'')+(g?`<span class="tag">💨 GB ${g}</span>`:'')};
+const extrasTags=(r)=>{const b=holeSum(r,'beer'),g=holeSum(r,'gb');return (b?`<span class="tag gold">🍺 ${b}</span>`:'')+(g?`<span class="tag">💨 ${g}</span>`:'')};
 // Round rating from Tiger 5 misses. Trophies: 0 → three, 1 → two, 2–3 → one
 // (finished rounds only, so a few clean holes don't earn them).
 // Poo: 4–7 → one, 8–10 → two, 11+ → three.
@@ -446,7 +456,7 @@ const LB_CATS=[
  {k:'trophy',label:'🏆 Trophy Rounds',val:rs=>rs.filter(r=>r.complete&&r.t5<=3).length,note:'Finished rounds with 3 or fewer Tiger 5 misses.'},
  {k:'poo',label:'💩 Poo Rounds',val:rs=>rs.filter(r=>r.t5>=4).length,note:'Rounds with 4 or more Tiger 5 misses. Wall of shame.'},
  {k:'beer',label:'🍺 Beers',val:rs=>rs.reduce((a,r)=>a+holeSum(r,'beer'),0),note:'Beers logged on the course.'},
- {k:'gb',label:'💨 GB',val:rs=>rs.reduce((a,r)=>a+holeSum(r,'gb'),0),note:'GB logged on the course.'},
+ {k:'gb',label:'💨 Rips',val:rs=>rs.reduce((a,r)=>a+holeSum(r,'gb'),0),note:'Rips logged on the course.'},
  {k:'likes',label:'👍 Likes Received',val:rs=>rs.reduce((a,r)=>a+(S.likes[r.id]||[]).length,0),note:'Likes on posted rounds.'},
  {k:'attested',label:'✋ Attested Rounds',val:rs=>rs.filter(r=>(S.attests[r.id]||[]).length).length,note:'Rounds a friend vouched for.'}
 ];
@@ -589,7 +599,7 @@ function roundView(key){
   <tr><td>Score</td>${sl.map(h=>`<td class="${fails(h).length?'miss':played(h)&&h.score<h.par?'u':''}">${played(h)?h.score:'–'}</td>`).join('')}<td><b>${sum(h=>h.score)}</b></td></tr>
   <tr><td>Putts</td>${sl.map(h=>`<td>${played(h)&&h.putts!=null?h.putts:'–'}</td>`).join('')}<td>${sl.some(h=>played(h)&&h.putts!=null)?sum(h=>played(h)?h.putts:0):'–'}</td></tr>
   ${holeSum(r,'beer')?`<tr><td>Beers</td>${sl.map(h=>`<td>${h.beer||''}</td>`).join('')}<td>${sum(h=>h.beer)}</td></tr>`:''}
-  ${holeSum(r,'gb')?`<tr><td>GB 💨</td>${sl.map(h=>`<td>${h.gb||''}</td>`).join('')}<td>${sum(h=>h.gb)}</td></tr>`:''}</table></div>`};
+  ${holeSum(r,'gb')?`<tr><td>Rips 💨</td>${sl.map(h=>`<td>${h.gb||''}</td>`).join('')}<td>${sum(h=>h.gb)}</td></tr>`:''}</table></div>`};
  h+=`<div class="card">${rows(0,9)}${rows(9,18)}<p class="hint" style="margin:0">Red holes broke a Tiger 5 rule. Green holes were under par.</p></div>`;
  h+=`<h2>Tiger 5</h2><div class="card"><table>`;
  RULES.forEach(q=>{const c=(r.per&&r.per[q.k])||0;h+=`<tr><td>${q.n}<div class="bar"><i style="width:${r.holesPlayed?Math.min(100,c/r.holesPlayed*300):0}%"></i></div></td><td class="n">${c}</td></tr>`});
@@ -737,7 +747,7 @@ function tripView(id){
  const tab=S.tripTabs[t.id]||'bets',exN=(S.expenses[t.id]||[]).length;
  const rs=mem.flatMap(u=>tripRounds(t,u)).sort((a,b)=>b.date.localeCompare(a.date)||(b.at||0)-(a.at||0));
  const beersTot=mem.reduce((a,u)=>a+allTripRounds(t,u).reduce((x,r)=>x+holeSum(r,'beer'),0),0),gbTot=mem.reduce((a,u)=>a+allTripRounds(t,u).reduce((x,r)=>x+holeSum(r,'gb'),0),0);
- const tabs=[['bets','Bets',bets.length],['receipts','Receipts',exN],['beers','Beers 🍺',beersTot],['gb','GB 💨',gbTot],['rounds','Rounds',rs.length],['players','Players',mem.length]];
+ const tabs=[['bets','Bets',bets.length],['receipts','Receipts',exN],['beers','Beers 🍺',beersTot],['gb','Rips 💨',gbTot],['rounds','Rounds',rs.length],['players','Players',mem.length]];
  // Ending a trip: the organizer can end it early (later rounds stop counting and settle-up is final).
  if(st==='done')h+=`<div class="card note item" style="margin-bottom:12px"><div class="mid"><b>Trip Completed</b><span>${t.ended_at?'Ended '+fmtDate(t.end_date)+'. ':''}Bets and settle-ups are final.</span></div>${owner&&t.ended_at?`<button data-act="reopentrip">Reopen</button>`:''}</div>`;
  else if(owner)h+=S.confirm==='endtrip'?`<div class="card note" style="margin-bottom:12px"><p style="margin-top:0">End the trip now? Rounds posted after today won’t count toward bets, and settle-ups become final.</p><div class="row"><button class="danger" data-act="endtrip">End Trip</button><button data-act="cancelc">Not yet</button></div></div>`
@@ -776,7 +786,7 @@ function tripView(id){
 
  if(tab==='receipts')h+=expensesSection(t,mem,who);
  if(tab==='beers')h+=extrasBoard(t,'beer','🍺','beer','beers');
- if(tab==='gb')h+=extrasBoard(t,'gb','💨','GB','GB');
+ if(tab==='gb')h+=extrasBoard(t,'gb','💨','rip','rips');
 
  // Bets settle up at the bottom of Bets; receipts have their own under Receipts.
  if(tab==='bets'&&bets.some(b=>+b.stake>0))h+=settleCard(t,settleBets(t),st==='done'?'Settle Up Bets':'Settle Up Bets (If the Trip Ended Now)','Bets only. Receipts settle up separately under Receipts.');
@@ -801,9 +811,9 @@ function tripView(id){
  return h;
 }
 
-// Every round posted during the trip, finished or not (for beer and GB totals).
+// Every round posted during the trip, finished or not (for beer and rip totals).
 const allTripRounds=(t,uid)=>(S.rounds[uid]||[]).filter(r=>r.date>=t.start_date&&r.date<=t.end_date);
-// Trip leaderboard for a per-hole extra (beers or GB): totals per player, most first.
+// Trip leaderboard for a per-hole extra (beers or rips): totals per player, most first.
 function extrasBoard(t,key,emoji,one,many){
  const mem=S.tripMembers[t.id]||[],who=(u)=>u===S.me?'You':handle(u);
  const rows=mem.map(u=>{const rs=allTripRounds(t,u);return{u,n:rs.length,tot:rs.reduce((a,r)=>a+holeSum(r,key),0)}}).sort((a,b)=>b.tot-a.tot||b.n-a.n);
@@ -1091,7 +1101,7 @@ function playHtml(){
 function startView(){
  const ix=S.status==='ready'?myIndex():null;
  return `${header('New Round')}
- <div class="card"><label for="course">Course</label><select id="course">${Object.entries(COURSES).map(([k,c])=>`<option value="${k}">${esc(c.name)}</option>`).join('')}<option value="">Other course</option></select>
+ <div class="card"><label for="course">Course</label><select id="course">${courseOptions()}<optgroup label="Not listed"><option value="">Other course</option></optgroup></select>
  <div id="otherWrap" hidden><label for="cname">Course name</label><input id="cname" maxlength="60" placeholder="Where are you playing?">
   <label>Scorecard Photos</label>
   <div class="row scrow">${['front','back'].map(side=>`<div><label class="filebtn${S.scPaths&&S.scPaths[side]?' done':''}" for="sc-${side}">${S.scBusy===side?'Uploading…':S.scPaths&&S.scPaths[side]?'✓ '+(side==='front'?'Front':'Back')+' added':'+ '+(side==='front'?'Front':'Back')}</label><input id="sc-${side}" type="file" accept="image/*" hidden></div>`).join('')}</div>
@@ -1136,7 +1146,7 @@ function holeView(){
  <button class="toggle" data-tg="ud" aria-pressed="${h.ud}"><span>Missed an easy up-and-down</span><b>${h.ud?'Yes':'No'}</b></button>
  <div class="row" style="margin-top:4px;align-items:flex-start">
   <div><label>Beers 🍺</label><div class="stepper sm"><button data-beer="-1" aria-label="One less beer">−</button><output>${h.beer||0}</output><button data-beer="1" aria-label="One more beer">+</button></div></div>
-  <div><label>GB 💨</label><div class="stepper sm"><button data-gb="-1" aria-label="One less GB">−</button><output>${h.gb||0}</output><button data-gb="1" aria-label="One more GB">+</button></div></div>
+  <div><label>Rips 💨</label><div class="stepper sm"><button data-gb="-1" aria-label="One less rip">−</button><output>${h.gb||0}</output><button data-gb="1" aria-label="One more rip">+</button></div></div>
  </div>
  <div class="chips">${p?(f.length?f.map(r=>`<span class="chip">${r.k==='r3'?'You Suck':'Nice Work Idiot'} - ${r.n.replace('No ','')}</span>`).join(''):'<span class="chip ok">Clean hole</span>'):''}</div></div>
  ${(draft.others||[]).map((o,i)=>playerCard(o,i+1)).join('')}
@@ -1155,7 +1165,7 @@ function playerCard(o,pp){
    <div><label>Putts</label><div class="stepper sm"><button data-pt="-1" ${P} aria-label="Fewer putts for ${esc(handle(o.uid))}">−</button><output>${x.putts==null?'–':x.putts}</output><button data-pt="1" ${P} aria-label="More putts for ${esc(handle(o.uid))}">+</button></div></div>
   </div>
   <div class="pick" style="margin-top:8px"><button data-tg="sc" ${P} aria-pressed="${!!x.sc}">Scoring club</button><button data-tg="ud" ${P} aria-pressed="${!!x.ud}">Missed up &amp; down</button></div>
-  <div class="row" style="margin-top:8px;justify-content:flex-start">${mini('beer','🍺','beer')}${mini('gb','💨','GB')}</div>
+  <div class="row" style="margin-top:8px;justify-content:flex-start">${mini('beer','🍺','beer')}${mini('gb','💨','rip')}</div>
   ${pl&&f.length?`<div class="chips" style="min-height:0">${f.map(r=>`<span class="chip">${r.n.replace('No ','')}</span>`).join('')}</div>`:''}
  </div>`;
 }

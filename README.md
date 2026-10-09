@@ -55,7 +55,7 @@ A trip page has four buttons: **Bets**, **Receipts**, **Rounds** and **Players**
 Tap any player's name or avatar (feed cards, round pages, comments, trip players) to open their profile; friends' profiles show their index, rating, averages and rounds. On the **Me** tab you can add, change or remove a profile photo. Photos are cropped to a 400px square and stored in the public `avatars` bucket under each player's own folder (only they can change it); the app only displays photos from that bucket.
 
 ## Feed, likes, comments and attests
-Each posted round shows as a card with Score, Putts, Tiger 5 and Differential circles (green = good, gold = so-so, red = rough), its trophy or poo rating, and 🍺 / 💨 GB totals. Friends can **Like** a round, **Comment** on it, and **Attest** it to vouch for the score (you can't attest your own). `supabase/social.sql` holds these tables (already applied to the live database); only people who can see a round can see or add to its likes, comments and attests.
+Each posted round shows as a card with Score, Putts, Tiger 5 and Differential circles (green = good, gold = so-so, red = rough), its trophy or poo rating, and 🍺 / 💨 Rips totals. Friends can **Like** a round, **Comment** on it, and **Attest** it to vouch for the score (you can't attest your own). `supabase/social.sql` holds these tables (already applied to the live database); only people who can see a round can see or add to its likes, comments and attests.
 
 ## Betting Board
 `supabase/board.sql` turns on the **Board** tab (already applied to the live database).
@@ -83,3 +83,12 @@ Score differentials follow the World Handicap System: adjusted gross score (net 
 
 ## Later: app stores
 The same code can be wrapped with [Capacitor](https://capacitorjs.com) to make iOS and Android apps. That needs an Apple Developer account ($99/year, plus a Mac to build) and a Google Play developer account ($25 once).
+
+## Courses
+The course picker is grouped by state. Besides the original Northern Virginia courses, `courses.js` adds 20 Myrtle Beach (SC) courses and 20 more Virginia courses. That data comes from [OpenGolfAPI](https://opengolfapi.org) (© OpenStreetMap contributors, ODbL 1.0) and was checked before use: 18 holes, handicaps 1–18 used once each, par 68–73, and tee ratings in order of length. Tees whose rating didn't fit their length were dropped, and hole yardages that didn't match the card total are hidden (the card's rating and slope are still used). Courses not in the list can be played as **Other course**, with photos of the scorecard front and back.
+
+## Group rounds, Leaderboard, Venmo
+- **Group rounds:** pick up to 3 friends under **Playing With** when starting a round, then score everyone on each hole. Friends' rounds post to their cards marked "Scored by", and they (or you) can delete them.
+- **Leaderboard** tab: you and your friends ranked across 13 categories, filterable to This Year or the Last 30 Days.
+- **Venmo:** add your Venmo username on the Me tab. Only friends can see it, and it shows as a Venmo link next to what people owe you.
+- `supabase/group.sql` adds `rounds.entered_by` / `rounds.scorecards`, the friends-only `profile_private` table and the private `scorecards` bucket (already applied to the live database).
