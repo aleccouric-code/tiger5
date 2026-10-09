@@ -287,8 +287,8 @@ function render(){
  if(S.status==='auth')html=authView();
  else if(S.status==='setup')html=setupView();
  else if(S.view==='play')html=playHtml();
- else if(S.status==='loading')html=header('The 19th')+`<div class="empty"><b>Loading your group…</b>Rounds and friends appear here in a moment.</div>`;
- else if(S.status!=='ready')html=header('The 19th')+offlineView();
+ else if(S.status==='loading')html=header('Welcome back')+`<div class="empty"><b>Loading your group…</b>Rounds and friends appear here in a moment.</div>`;
+ else if(S.status!=='ready')html=header('Can’t connect')+offlineView();
  else if(S.view==='friends')html=friendsView();
  else if(S.view==='board')html=boardView();
  else if(S.view==='newbet')html=newBetView();
@@ -314,9 +314,13 @@ function renderTabs(){
  const t=[['feed','Feed'],['play',draft?'Round':'Play'],['trips','Trips'],['board','Board'],['friends','Friends'],['me','Me']];
  $('#tabs').innerHTML=hide?'':`<div>${t.map(([k,l])=>`<button data-nav="${k}" ${cur===k?'aria-current="page"':''}>${l}${badges[k]?`<span class="badge">${badges[k]}</span>`:''}</button>`).join('')}</div>`;
 }
+// The 19th logo: the splash screen's emblem (gold ring, flag with "19", ball by the cup).
+const LOGO=`<svg class="logo" viewBox="0 0 168 168" aria-hidden="true"><circle cx="84" cy="84" r="80" fill="none" stroke="#E3B04B" stroke-width="6"/><g transform="translate(32 24)"><line x1="34" y1="10" x2="34" y2="104" stroke="#F3EAD3" stroke-width="5" stroke-linecap="round"/><path d="M36 12 L92 28 L36 46 Z" fill="#E3B04B"/><text x="56" y="34" font-family="DM Serif Display, Georgia, serif" font-size="17" fill="#0F2A1D" text-anchor="middle">19</text><ellipse cx="44" cy="106" rx="34" ry="6" fill="#1C4533"/><circle cx="66" cy="98" r="9" fill="#F3EAD3"/></g></svg>`;
+// Every page starts with the brand bar (logo, wordmark, your index), then the page title.
 function header(title,eyebrow){
- const ready=S.status==='ready';
- return `<header class="top"><div style="min-width:0"><span class="eyebrow">${esc(eyebrow||'The 19th')}${S.offline&&ready?' · offline':''}</span><h1>${esc(title)}</h1></div>${ready?`<button class="idx" data-nav="me" aria-label="Your handicap index"><b>${fmtIdx(myIndex())}</b><span>Index</span></button>`:''}</header>`;
+ const ready=S.status==='ready',sub=[eyebrow&&eyebrow!=='The 19th'?eyebrow:'',S.offline&&ready?'Offline':''].filter(Boolean).join(' · ');
+ return `<header class="brandbar"><button class="brand" data-nav="feed" aria-label="The 19th, go to Feed">${LOGO}<span class="wm">The <em>19th</em></span></button>${ready?`<button class="idx" data-nav="me" aria-label="Your handicap index"><b>${fmtIdx(myIndex())}</b><span>Index</span></button>`:''}</header>
+ <div class="ptitle">${sub?`<span class="eyebrow">${esc(sub)}</span>`:''}<h1>${esc(title)}</h1></div>`;
 }
 // Avatar circle: the player's photo if they've added one, otherwise colored initials.
 // Only photos from this app's own avatars bucket are shown.
@@ -381,7 +385,7 @@ function feedCard(r){
  const rings=[
   ['Score',r.score,r.complete?rel(r.score-r.parPlayed):r.holesPlayed+' holes',r.diff==null?none:ix==null?ok:r.diff<=ix?good:r.diff<=ix+3?ok:bad],
   ['Putts',r.putts==null?'–':r.putts,r.putts==null?'not tracked':(p18/18).toFixed(1)+'/hole',p18==null?none:p18<=32?good:p18<=36?ok:bad],
-  ['The 19th',r.t5,'misses',r.t5<=3?good:r.t5<=7?ok:bad],
+  ['Tiger 5',r.t5,'misses',r.t5<=3?good:r.t5<=7?ok:bad],
   ['Diff',fmtDiff(r.diff),r.diff==null?'not rated':'differential',r.diff==null?none:ix==null?ok:r.diff<=ix?good:r.diff<=ix+3?ok:bad]];
  const key=esc(r.uid)+'/'+esc(r.id);
  return `<article class="card fcard">
@@ -1076,8 +1080,16 @@ function summaryView(){
 /* ---------- actions ---------- */
 function go(view,arg){
  if(view!==S.view||arg!==S.arg){S.exSplit=null;S.exPaidBy=null;S.exFile=null}
- S.view=view;S.arg=arg||null;S.confirm=null;S.editName=false;S.settling=null;S.receiptView=null;render();
+ S.view=view;S.arg=arg||null;S.confirm=null;S.editName=false;S.settling=null;S.receiptView=null;
+ rememberPlace();render();
 }
+// Refreshing keeps you on the same page (and trip section); a fresh launch starts on the Feed.
+const VIEWS=['feed','play','trips','trip','newtrip','board','newbet','friends','player','round'];
+function rememberPlace(){try{sessionStorage.setItem('t19-place',JSON.stringify({view:S.view,arg:S.arg,tripTabs:S.tripTabs,tripsFilter:S.tripsFilter||null}))}catch(e){}}
+try{
+ const p=JSON.parse(sessionStorage.getItem('t19-place')||'null');
+ if(p&&VIEWS.includes(p.view)){S.view=p.view;S.arg=typeof p.arg==='string'?p.arg:null;S.tripTabs=p.tripTabs&&typeof p.tripTabs==='object'?p.tripTabs:{};S.tripsFilter=p.tripsFilter||undefined}
+}catch(e){}
 async function postRound(){
  if(!draft||S.busy)return;
  const ix=myIndex(),t=calc(draft,ix),row=JSON.parse(JSON.stringify(toRow(draft,t,ix)));
@@ -1156,8 +1168,8 @@ document.addEventListener('click',async e=>{
   if(error){fail(error,'Couldn’t post the comment.');return render()}
   (S.comments[d.id]=S.comments[d.id]||[]).push(c);const again=document.getElementById(d.input||'cbody');if(again)again.value='';return render();
  }
- if(d.tfilter){S.tripsFilter=d.tfilter;return render()}
- if(d.ttab){S.tripTabs[S.arg]=d.ttab;S.confirm=null;S.receiptView=null;return render()}
+ if(d.tfilter){S.tripsFilter=d.tfilter;rememberPlace();return render()}
+ if(d.ttab){S.tripTabs[S.arg]=d.ttab;rememberPlace();S.confirm=null;S.receiptView=null;return render()}
  if(d.expaid){S.exPaidBy=d.expaid;return render()}
  if(d.exsplit){const t=curTrip(),mem=t?S.tripMembers[t.id]||[]:[];const s=new Set(S.exSplit||mem);s.has(d.exsplit)?s.delete(d.exsplit):s.add(d.exsplit);S.exSplit=mem.filter(u=>s.has(u));return render()}
  if(d.player)return go('player',d.player);

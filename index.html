@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>The 19th</title>
 <meta name="description" content="Golf scores, handicaps, Tiger 5 tracking, trips and side bets for you and your friends.">
-<meta name="theme-color" content="#2e6b45">
+<meta name="theme-color" content="#0F2A1D">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="The 19th">
@@ -68,6 +68,17 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 .seg{display:flex;gap:6px}
 .seg button{flex:1}
 .seg button[aria-pressed=true]{background:var(--green);color:var(--on-green);border-color:var(--green)}
+/* Brand bar: same deep green and gold as the splash screen, in both light and dark mode */
+.brandbar{position:sticky;top:0;z-index:5;margin:0 -16px 0;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;background:#0F2A1D;color:#F3EAD3;display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 2px 10px rgba(0,0,0,.18)}
+.brand{display:flex;align-items:center;gap:10px;border:0;background:none;padding:0;min-height:0;color:inherit;min-width:0}
+.logo{width:46px;height:46px;flex:none}
+.wm{font-family:"DM Serif Display",Georgia,serif;font-size:32px;line-height:1;letter-spacing:-.5px;color:#F3EAD3;white-space:nowrap}
+.wm em{font-style:italic;color:#E3B04B}
+.brandbar .idx{border-color:#E3B04B;background:transparent;width:56px;height:56px}
+.brandbar .idx b{color:#F3EAD3;font-size:18px}
+.brandbar .idx span{color:#CFC4A8}
+.ptitle{padding-block:14px 12px}
+.ptitle h1{font-size:26px}
 .idx{flex:none;width:62px;height:62px;border-radius:50%;border:2px solid var(--green);background:var(--card);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:0;min-height:0}
 .idx b{font-size:20px;font-weight:800;line-height:1}
 .idx span{font-size:9px;color:var(--mute);letter-spacing:.08em;text-transform:uppercase}
