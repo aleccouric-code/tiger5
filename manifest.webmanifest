@@ -1,7 +1,7 @@
 {
-  "name": "Tiger 5 Scorecard",
-  "short_name": "Tiger 5",
-  "description": "Golf scores, handicap index and Tiger 5 tracking for you and your friends.",
+  "name": "The 19th",
+  "short_name": "The 19th",
+  "description": "Golf scores, handicaps, Tiger 5 tracking, trips and side bets for you and your friends.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

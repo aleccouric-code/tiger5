@@ -139,13 +139,13 @@ function cacheLoad(){const c=LS.get(CACHEKEY,null);if(!c||c.me!==S.me)return fal
 
 async function loadAll(){
  try{
-  const {data:prof,error:e1}=await sb.from('profiles').select('id,handle,friend_code').eq('id',S.me).maybeSingle();if(e1)throw e1;
+  const {data:prof,error:e1}=await sb.from('profiles').select('id,handle,friend_code,avatar_url').eq('id',S.me).maybeSingle();if(e1)throw e1;
   if(!prof){S.status='setup';return render()}
   const profiles={[S.me]:prof};
   const {data:fr,error:e2}=await sb.from('friendships').select('*');if(e2)throw e2;
   S.friendships=fr||[];
   const others=[...new Set(S.friendships.map(other))];
-  if(others.length){const {data:ps,error}=await sb.from('profiles').select('id,handle').in('id',others);if(error)throw error;(ps||[]).forEach(p=>profiles[p.id]=p)}
+  if(others.length){const {data:ps,error}=await sb.from('profiles').select('id,handle,avatar_url').in('id',others);if(error)throw error;(ps||[]).forEach(p=>profiles[p.id]=p)}
   const ids=[S.me,...new Set(S.friendships.filter(f=>f.status==='accepted').map(other))];
   const tripMates=await loadTrips(profiles,ids);
   await loadBoard(profiles);
@@ -191,7 +191,7 @@ async function loadTrips(profiles,friendsAndMe){
   S.trips=trips.sort((x,y)=>y.start_date.localeCompare(x.start_date));S.tripMembers=members;S.bets=betsBy;S.tripsOk=true;
   const mates=[...new Set(Object.values(members).flat())].filter(u=>!friendsAndMe.includes(u));
   const missing=mates.filter(u=>!profiles[u]);
-  if(missing.length){const {data:ps}=await sb.from('profiles').select('id,handle').in('id',missing);(ps||[]).forEach(p=>profiles[p.id]=p)}
+  if(missing.length){const {data:ps}=await sb.from('profiles').select('id,handle,avatar_url').in('id',missing);(ps||[]).forEach(p=>profiles[p.id]=p)}
   return mates;
  }catch(e){
   console.error(e);
@@ -218,7 +218,7 @@ async function loadSocial(rounds){
   }
   S.likes=likes;S.comments=comments;S.attests=attests;
   const need=[...new Set([...Object.values(likes).flat(),...Object.values(attests).flat(),...Object.values(comments).flat().map(c=>c.user_id)])].filter(u=>!S.profiles[u]);
-  if(need.length){const {data}=await sb.from('profiles').select('id,handle').in('id',need);(data||[]).forEach(p=>S.profiles[p.id]=p)}
+  if(need.length){const {data}=await sb.from('profiles').select('id,handle,avatar_url').in('id',need);(data||[]).forEach(p=>S.profiles[p.id]=p)}
  }catch(e){console.error(e)}
 }
 // Loads Betting Board bets the viewer can see, with everyone's picks.
@@ -231,7 +231,7 @@ async function loadBoard(profiles){
   const by={};picks.forEach(p=>(by[p.bet_id]=by[p.bet_id]||[]).push(p));
   S.board=bs||[];S.boardPicks=by;S.boardOk=true;
   const need=[...new Set([...S.board.map(b=>b.created_by),...picks.map(p=>p.user_id)])].filter(u=>!profiles[u]);
-  if(need.length){const {data:ps}=await sb.from('profiles').select('id,handle').in('id',need);(ps||[]).forEach(p=>profiles[p.id]=p)}
+  if(need.length){const {data:ps}=await sb.from('profiles').select('id,handle,avatar_url').in('id',need);(ps||[]).forEach(p=>profiles[p.id]=p)}
  }catch(e){
   console.error(e);
   if(e&&(e.code==='42P01'||e.code==='PGRST205'||/does not exist|schema cache/i.test(e.message||'')))S.boardOk=false;
@@ -287,8 +287,8 @@ function render(){
  if(S.status==='auth')html=authView();
  else if(S.status==='setup')html=setupView();
  else if(S.view==='play')html=playHtml();
- else if(S.status==='loading')html=header('Tiger 5')+`<div class="empty"><b>Loading your group…</b>Rounds and friends appear here in a moment.</div>`;
- else if(S.status!=='ready')html=header('Tiger 5')+offlineView();
+ else if(S.status==='loading')html=header('The 19th')+`<div class="empty"><b>Loading your group…</b>Rounds and friends appear here in a moment.</div>`;
+ else if(S.status!=='ready')html=header('The 19th')+offlineView();
  else if(S.view==='friends')html=friendsView();
  else if(S.view==='board')html=boardView();
  else if(S.view==='newbet')html=newBetView();
@@ -316,9 +316,16 @@ function renderTabs(){
 }
 function header(title,eyebrow){
  const ready=S.status==='ready';
- return `<header class="top"><div style="min-width:0"><span class="eyebrow">${esc(eyebrow||'Tiger 5')}${S.offline&&ready?' · offline':''}</span><h1>${esc(title)}</h1></div>${ready?`<button class="idx" data-nav="me" aria-label="Your handicap index"><b>${fmtIdx(myIndex())}</b><span>Index</span></button>`:''}</header>`;
+ return `<header class="top"><div style="min-width:0"><span class="eyebrow">${esc(eyebrow||'The 19th')}${S.offline&&ready?' · offline':''}</span><h1>${esc(title)}</h1></div>${ready?`<button class="idx" data-nav="me" aria-label="Your handicap index"><b>${fmtIdx(myIndex())}</b><span>Index</span></button>`:''}</header>`;
 }
-const av=(id)=>`<span class="av" style="background:${avColor(id)}" aria-hidden="true">${esc(initials(handle(id)))}</span>`;
+// Avatar circle: the player's photo if they've added one, otherwise colored initials.
+// Only photos from this app's own avatars bucket are shown.
+const AVATAR_PREFIX=(CFG.supabaseUrl||'')+'/storage/v1/object/public/avatars/';
+const photoOf=(id)=>{const u=S.profiles[id]&&S.profiles[id].avatar_url;return u&&u.startsWith(AVATAR_PREFIX)?u:null};
+const av=(id,cls='')=>{const u=photoOf(id);return u?`<img class="av ${cls}" src="${esc(u)}" alt="" loading="lazy" decoding="async">`
+ :`<span class="av ${cls}" style="background:${avColor(id)}" aria-hidden="true">${esc(initials(handle(id)))}</span>`};
+// Small photo circle next to a name in tables and lists.
+const withPic=(id,label)=>`<span class="npic">${av(id,'xs')}<span>${esc(label)}</span></span>`;
 
 function offlineView(){
  const msg=!configured?'This copy isn’t connected to a database yet. Add your Supabase details to config.js (see README.md).'
@@ -328,7 +335,7 @@ function offlineView(){
 }
 function authView(){
  const up=S.authStep==='signup';
- return `${header(up?'Create account':'Sign in','Tiger 5')}
+ return `${header(up?'Create account':'Sign in','The 19th')}
  <div class="card"><p style="margin-top:0">Track your score, your handicap index and the five mistakes that cost you strokes, and see your friends’ rounds.</p>
  <div class="seg" style="margin-bottom:4px"><button data-act="authmode" data-m="signin" aria-pressed="${!up}">Sign in</button><button data-act="authmode" data-m="signup" aria-pressed="${up}">Create account</button></div>
  <label for="email">Email</label><input id="email" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" value="${esc(S.authEmail)}">
@@ -339,7 +346,7 @@ function authView(){
  </div>${LS.get(INVKEY,null)?`<p class="sub">You were invited by a friend. ${up?'Create an account':'Sign in'} and we’ll connect you.</p>`:''}`;
 }
 function setupView(){
- return `${header('Welcome','Tiger 5')}
+ return `${header('Welcome','The 19th')}
  <div class="card"><label for="handle">Your name in the app</label><input id="handle" maxlength="30" autocomplete="nickname" placeholder="e.g. Alec C.">
  <p class="hint">This is how friends will see you.</p>
  <button class="primary wide" style="margin-top:14px" data-act="join" ${S.busy?'disabled':''}>Continue</button></div>`;
@@ -374,12 +381,12 @@ function feedCard(r){
  const rings=[
   ['Score',r.score,r.complete?rel(r.score-r.parPlayed):r.holesPlayed+' holes',r.diff==null?none:ix==null?ok:r.diff<=ix?good:r.diff<=ix+3?ok:bad],
   ['Putts',r.putts==null?'–':r.putts,r.putts==null?'not tracked':(p18/18).toFixed(1)+'/hole',p18==null?none:p18<=32?good:p18<=36?ok:bad],
-  ['Tiger 5',r.t5,'misses',r.t5<=3?good:r.t5<=7?ok:bad],
+  ['The 19th',r.t5,'misses',r.t5<=3?good:r.t5<=7?ok:bad],
   ['Diff',fmtDiff(r.diff),r.diff==null?'not rated':'differential',r.diff==null?none:ix==null?ok:r.diff<=ix?good:r.diff<=ix+3?ok:bad]];
  const key=esc(r.uid)+'/'+esc(r.id);
  return `<article class="card fcard">
+ <button class="fhead" data-player="${esc(r.uid)}" aria-label="View ${esc(mine?'your':handle(r.uid)+'’s')} profile">${av(r.uid)}<div class="mid"><b>${esc(mine?'You':handle(r.uid))}${ix!=null?` <span class="fidx">${fmtIdx(ix)}</span>`:''}</b></div><span class="fwhen">${relDay(r.date)}</span></button>
  <button class="fmain" data-round="${key}" aria-label="Open ${esc(mine?'your':handle(r.uid)+'’s')} round at ${esc(r.course)}">
-  <div class="fhead">${av(r.uid)}<div class="mid"><b>${esc(mine?'You':handle(r.uid))}${ix!=null?` <span class="fidx">${fmtIdx(ix)}</span>`:''}</b></div><span class="fwhen">${relDay(r.date)}</span></div>
   <div class="fcourse">${FLAG}<span>${esc(r.course)}</span></div>
   <div class="ftee">${[r.tee?esc(r.tee)+' tees':'',r.n===9?(r.nine==='back'?'Back 9':'Front 9'):''].filter(Boolean).join(' · ')}</div>
   <div class="rings">${rings.map(([l,v,s,c])=>`<div class="ring"><span class="rl">${l}</span><b style="--ring:${c}">${v}</b><small>${s}</small></div>`).join('')}</div>
@@ -392,7 +399,7 @@ function feedCard(r){
  </div>
  <div class="fcomments">
   ${coms.length>3?`<button class="link" data-comments="${key}">View all ${coms.length} comments</button>`:''}
-  ${coms.slice(-3).map(c=>`<p><b>${esc(c.user_id===S.me?'You':handle(c.user_id))}</b> ${esc(c.body)}</p>`).join('')}
+  ${coms.slice(-3).map(c=>`<p><button class="link plain namelink" data-player="${esc(c.user_id)}">${esc(c.user_id===S.me?'You':handle(c.user_id))}</button> ${esc(c.body)}</p>`).join('')}
   <div class="row"><input id="fc-${esc(r.id)}" maxlength="500" placeholder="Add a comment…" autocomplete="off" aria-label="Comment on this round"><button style="flex:none" data-act="postcomment" data-id="${esc(r.id)}" data-input="fc-${esc(r.id)}">Post</button></div>
  </div>`}
  </article>`;
@@ -458,7 +465,7 @@ function friendsView(){
   <div class="row"><span class="code">${esc(me().friend_code||'——')}</span><button class="primary" data-act="share">Share invite link</button></div></div>`;
  h+=`<h2>Handicap standings</h2>`;
  const st=[S.me,...fr].map(id=>({id,h:hcp(S.rounds[id]),n:(S.rounds[id]||[]).length})).sort((a,b)=>(a.h.index==null)-(b.h.index==null)||(a.h.index||0)-(b.h.index||0));
- h+=`<div class="card"><table><thead><tr><th>Player</th><th class="n">Rounds</th><th class="n">Index</th></tr></thead><tbody>${st.map((s,i)=>`<tr><td><button class="link plain" style="color:var(--ink);text-decoration:none;font-weight:600" data-player="${esc(s.id)}">${i+1}. ${esc(s.id===S.me?'You':handle(s.id))}</button></td><td class="n" style="font-weight:400">${s.n}</td><td class="n">${fmtIdx(s.h.index)}</td></tr>`).join('')}</tbody></table>${fr.length?'':`<p class="hint">Add friends to compare handicaps.</p>`}</div>`;
+ h+=`<div class="card"><table><thead><tr><th>Player</th><th class="n">Rounds</th><th class="n">Index</th></tr></thead><tbody>${st.map((s,i)=>`<tr><td><button class="link plain" style="color:var(--ink);text-decoration:none;font-weight:600" data-player="${esc(s.id)}">${i+1}. ${withPic(s.id,s.id===S.me?'You':handle(s.id))}</button></td><td class="n" style="font-weight:400">${s.n}</td><td class="n">${fmtIdx(s.h.index)}</td></tr>`).join('')}</tbody></table>${fr.length?'':`<p class="hint">Add friends to compare handicaps.</p>`}</div>`;
  if(fr.length){h+=`<h2>Your friends</h2>`;fr.forEach(id=>{const x=hcp(S.rounds[id]);h+=`<div class="card item"><button class="item plain" data-player="${esc(id)}">${av(id)}<div class="mid"><b>${esc(handle(id))}</b><span>Index ${fmtIdx(x.index)} · ${(S.rounds[id]||[]).length} rounds</span></div></button>${S.confirm==='rm:'+id?`<button data-act="unfriend" data-id="${esc(id)}">Remove</button><button class="link" data-act="cancelc">Keep</button>`:`<button class="link" data-act="ask" data-c="rm:${esc(id)}">Remove</button>`}</div>`})}
  if(out.length){h+=`<h2>Waiting on them</h2>`;out.forEach(id=>h+=`<div class="card item">${av(id)}<div class="mid"><b>${esc(handle(id))}</b><span>Request sent</span></div><button class="link" data-act="unfriend" data-id="${esc(id)}">Cancel</button></div>`)}
  return h;
@@ -479,11 +486,13 @@ function playerView(id){
  const mineView=id===S.me;
  if(!mineView&&!isFriend(id))return header(handle(id),'Player')+`<div class="card empty"><b>Scores are shared between friends</b>Add ${esc(handle(id))} as a friend to see all their rounds.<div style="margin-top:14px">${friendAction(id,'Add friend')}</div></div>`;
  const rounds=S.rounds[id]||[],x=hcp(rounds);
- let h=header(mineView?'Your card':handle(id),mineView?'Tiger 5':'Friend');
+ let h=header(mineView?'Your card':handle(id),mineView?'The 19th':'Friend');
  if(mineView){
   h+=S.editName?`<div class="card"><label for="newname">Your name in the app</label><input id="newname" maxlength="30" value="${esc(me().handle||'')}"><div class="row" style="margin-top:10px"><button class="primary" data-act="savename">Save</button><button data-act="cancelname">Cancel</button></div></div>`
    :`<p class="sub">Playing as <b>${esc(me().handle||'')}</b> · <button class="link" data-act="editname">Change name</button> · <button class="link" data-act="signout">Sign out</button></p>`;
  }
+ // Profile photo: big circle; on your own card, buttons to add, change or remove it.
+ h+=`<div class="phead">${av(id,'lg')}${mineView?`<div><label class="filebtn" for="avfile">${S.busy==='photo'?'Uploading…':photoOf(id)?'Change photo':'Add a photo'}</label><input id="avfile" type="file" accept="image/*" hidden>${photoOf(id)?`<button class="link" data-act="rmphoto">Remove photo</button>`:''}<p class="hint" style="margin:6px 0 0">Shows next to your name for your friends.</p></div>`:`<div><p class="hint" style="margin:0">${(S.rounds[id]||[]).length} rounds posted</p></div>`}</div>`;
  const complete=rounds.filter(r=>r.complete),holes=complete.reduce((a,r)=>a+r.n,0);
  const t5per18=holes?complete.reduce((a,r)=>a+r.t5,0)/holes*18:null;
  const f18=complete.filter(r=>r.n===18);
@@ -510,6 +519,7 @@ function roundView(key){
  if(!r)return header('Round')+`<div class="card empty"><b>Round not found</b>It may have been deleted.</div>`;
  const mine=u===S.me,x=hcp(S.rounds[u]);
  let h=header(r.course,(mine?'You':handle(u))+' · '+fmtDate(r.date));
+ h+=`<button class="item plain" style="margin:0 0 8px" data-player="${esc(u)}">${av(u)}<div class="mid"><b>${esc(mine?'You':handle(u))}</b><span>View profile</span></div></button>`;
  h+=`<p class="sub">${r.tee?esc(r.tee)+' tees · ':''}${r.rating?`${r.rating}/${r.slope}`:'No rating'}${r.n===9?' · 9 holes':''}${x.used.has(r.id)?' · <span class="tag">Counts toward index</span>':''}</p>`;
  h+=`<div class="card big"><div><b>${r.score}</b><span>${r.complete?rel(r.score-r.parPlayed)+' to par':r.holesPlayed+' holes'}</span></div><div><b>${r.net!=null?r.net:'—'}</b><span>Net${r.ch!=null?` (CH ${r.ch})`:''}</span></div><div><b>${fmtDiff(r.diff)}</b><span>Differential</span></div><div><b>${r.t5}</b><span>Tiger 5</span></div></div>`;
  const hs=r.holes||[],start=r.nine==='back'?10:1;
@@ -533,7 +543,7 @@ function roundView(key){
   if(likes.length||att.length)h+=`<p class="hint" style="margin:0 0 10px">${likes.length?'👍 Liked by '+esc(namesList(likes)):''}${likes.length&&att.length?' · ':''}${att.length?'✋ Attested by '+esc(namesList(att)):''}</p>`;
   if(!att.length&&!mine)h+=`<p class="hint" style="margin:-4px 0 10px">Played with ${esc(handle(u))}? Attest to vouch for the score.</p>`;
   h+=`<h2 id="comments">Comments${coms.length?' ('+coms.length+')':''}</h2><div class="card">`;
-  h+=coms.length?coms.map(c=>`<div class="comment">${av(c.user_id)}<div class="mid"><b>${esc(c.user_id===S.me?'You':handle(c.user_id))}</b> <span class="hint" style="margin:0">${relDay(c.created_at.slice(0,10))}</span><p>${esc(c.body)}</p></div>${c.user_id===S.me||mine?`<button class="link" data-delcomment="${esc(c.id)}" data-rid="${esc(r.id)}" aria-label="Delete comment">Delete</button>`:''}</div>`).join(''):`<p class="hint" style="margin:0 0 6px">No comments yet. Say something nice. Or don’t.</p>`;
+  h+=coms.length?coms.map(c=>`<div class="comment">${av(c.user_id)}<div class="mid"><button class="link plain namelink" data-player="${esc(c.user_id)}">${esc(c.user_id===S.me?'You':handle(c.user_id))}</button> <span class="hint" style="margin:0">${relDay(c.created_at.slice(0,10))}</span><p>${esc(c.body)}</p></div>${c.user_id===S.me||mine?`<button class="link" data-delcomment="${esc(c.id)}" data-rid="${esc(r.id)}" aria-label="Delete comment">Delete</button>`:''}</div>`).join(''):`<p class="hint" style="margin:0 0 6px">No comments yet. Say something nice. Or don’t.</p>`;
   h+=`<div class="row" style="margin-top:8px"><input id="cbody" maxlength="500" placeholder="Add a comment…" autocomplete="off"><button class="primary" style="flex:none" data-act="postcomment" data-id="${esc(r.id)}" ${S.busy?'disabled':''}>Post</button></div></div>`;
  }
  if(mine&&!r.pending)h+=S.confirm==='del'?`<div class="card note"><p style="margin-top:0">Delete this round for good? It also comes off your handicap.</p><div class="row"><button class="danger" data-act="delround" data-id="${esc(r.id)}">Delete round</button><button data-act="cancelc">Keep it</button></div></div>`:`<button class="wide" data-act="ask" data-c="del">Delete round</button>`;
@@ -681,7 +691,7 @@ function tripView(id){
    const s=betStandings(t,b);
    h+=`<p class="hint" style="margin:4px 0 0">${k.single?'Lowest 18-hole score in a single round':b.scoring==='avg'?'Average per 18 holes':'Total across all trip rounds'}</p>`;
    if(!s.ranked.length)h+=`<p class="hint">No finished trip rounds yet.</p>`;
-   else h+=`<table style="margin-top:6px"><tbody>${s.ranked.map(r=>`<tr class="${s.leaders.includes(r.uid)?'lead':''}"><td>${esc(who(r.uid))}</td><td class="n" style="font-weight:400;color:var(--mute)">${r.n} rd${r.n===1?'':'s'}</td><td class="n">${r.v}</td></tr>`).join('')}${s.none.map(r=>`<tr><td style="color:var(--mute)">${esc(who(r.uid))}</td><td></td><td class="n" style="font-weight:400;color:var(--mute)">${b.kind==='net'?'no index':(b.kind==='putts'||b.kind==='three_putts')&&tripRounds(t,r.uid).length?'no putts':'—'}</td></tr>`).join('')}</tbody></table>`;
+   else h+=`<table style="margin-top:6px"><tbody>${s.ranked.map(r=>`<tr class="${s.leaders.includes(r.uid)?'lead':''}"><td>${withPic(r.uid,who(r.uid))}</td><td class="n" style="font-weight:400;color:var(--mute)">${r.n} rd${r.n===1?'':'s'}</td><td class="n">${r.v}</td></tr>`).join('')}${s.none.map(r=>`<tr><td style="color:var(--mute)">${withPic(r.uid,who(r.uid))}</td><td></td><td class="n" style="font-weight:400;color:var(--mute)">${b.kind==='net'?'no index':(b.kind==='putts'||b.kind==='three_putts')&&tripRounds(t,r.uid).length?'no putts':'—'}</td></tr>`).join('')}</tbody></table>`;
    if(s.uneven)h+=`<p class="hint">Players have played different numbers of rounds, so totals aren’t a fair comparison yet.</p>`;
    if(s.leaders.length)h+=`<p class="hint">${st==='done'?'Won by':'Leading:'} <b>${esc(s.leaders.map(who).join(' & '))}</b>${s.leaders.length>1&&stake?' (pot split)':''}</p>`;
   }
@@ -710,7 +720,7 @@ function tripView(id){
 
  if(tab==='players'){
  h+=`<div class="card">`;
- h+=mem.map(u=>`<div class="item" style="padding:6px 0">${av(u)}<div class="mid"><b>${esc(who(u))}</b>${u===t.created_by?'<span>Organizer</span>':''}</div>${friendAction(u,'Add friend')}${owner&&u!==S.me?`<button class="link" data-act="rmmember" data-u="${esc(u)}">Remove</button>`:''}</div>`).join('');
+ h+=mem.map(u=>`<div class="item" style="padding:6px 0"><button class="item plain" data-player="${esc(u)}" aria-label="View ${esc(who(u))} profile">${av(u)}<div class="mid"><b>${esc(who(u))}</b>${u===t.created_by?'<span>Organizer</span>':''}</div></button>${friendAction(u,'Add friend')}${owner&&u!==S.me?`<button class="link" data-act="rmmember" data-u="${esc(u)}">Remove</button>`:''}</div>`).join('');
  if(mem.some(u=>u!==S.me&&!isFriend(u)))h+=`<p class="hint">Friends see each other’s rounds all year, not just on this trip.</p>`;
  {
   // Anyone on the trip can add their own friends; only the organizer removes others.
@@ -734,7 +744,7 @@ function extrasBoard(t,key,emoji,one,many){
  const rows=mem.map(u=>{const rs=allTripRounds(t,u);return{u,n:rs.length,tot:rs.reduce((a,r)=>a+holeSum(r,key),0)}}).sort((a,b)=>b.tot-a.tot||b.n-a.n);
  const grand=rows.reduce((a,r)=>a+r.tot,0),top=rows.length&&rows[0].tot?rows[0].tot:null;
  let h=`<div class="card big" style="margin-bottom:10px"><div><b>${emoji} ${grand}</b><span>${grand===1?one:many} on the trip</span></div></div>`;
- h+=`<div class="card"><table><thead><tr><th>Player</th><th class="n">Rounds</th><th class="n">Per round</th><th class="n">Total</th></tr></thead><tbody>${rows.map(r=>`<tr class="${top!=null&&r.tot===top?'lead':''}"><td>${esc(who(r.u))}</td><td class="n" style="font-weight:400;color:var(--mute)">${r.n}</td><td class="n" style="font-weight:400">${r.n?(r.tot/r.n).toFixed(1):'—'}</td><td class="n">${r.tot}</td></tr>`).join('')}</tbody></table>
+ h+=`<div class="card"><table><thead><tr><th>Player</th><th class="n">Rounds</th><th class="n">Per round</th><th class="n">Total</th></tr></thead><tbody>${rows.map(r=>`<tr class="${top!=null&&r.tot===top?'lead':''}"><td>${withPic(r.u,who(r.u))}</td><td class="n" style="font-weight:400;color:var(--mute)">${r.n}</td><td class="n" style="font-weight:400">${r.n?(r.tot/r.n).toFixed(1):'—'}</td><td class="n">${r.tot}</td></tr>`).join('')}</tbody></table>
  <p class="hint">Counted from the ${emoji} ${many} entered hole by hole on rounds posted ${fmtRange(t)}.</p></div>`;
  return h;
 }
@@ -742,14 +752,14 @@ function settleCard(t,sv,title,note){
  const mem=S.tripMembers[t.id]||[],who=(u)=>u===S.me?'You':handle(u);
  const sgn=(v)=>{v=Math.round((v||0)*100)/100;return `<span class="${v>0?'pos':v<0?'neg':''}">${v>0?'+':v<0?'−':''}${fmtMoney(v)}</span>`};
  return `<h2>${esc(title)}</h2><div class="card">`
-  +(sv.pays.length?`<table><tbody>${sv.pays.map(p=>`<tr><td>${esc(who(p.from))} pay${p.from===S.me?'':'s'} ${esc(p.to===S.me?'you':handle(p.to))}</td><td class="n">${fmtMoney(p.amt)}</td></tr>`).join('')}</tbody></table>`:`<p style="margin:0">Nobody owes anything yet.</p>`)
+  +(sv.pays.length?`<table><tbody>${sv.pays.map(p=>`<tr><td>${av(p.from,'xs')} ${esc(who(p.from))} pay${p.from===S.me?'':'s'} ${esc(p.to===S.me?'you':handle(p.to))}</td><td class="n">${fmtMoney(p.amt)}</td></tr>`).join('')}</tbody></table>`:`<p style="margin:0">Nobody owes anything yet.</p>`)
   +`<p class="hint">Net: ${mem.map(u=>`${esc(who(u))} ${sgn(sv.net[u])}`).join(' · ')}</p><p class="hint">${esc(note)} The app only keeps track; settle up however your group pays each other.</p></div>`;
 }
 function expensesSection(t,mem,who){
  const list=S.expenses[t.id]||[],ex=expenseTotals(t),total=list.reduce((a,e)=>a+e.amount,0);
  let h='';
  if(list.length){
-  h+=`<div class="card"><div class="bet-head"><b>Trip spending</b><span class="money">${fmtMoney(total)}</span></div><table style="margin-top:6px"><thead><tr><th>Player</th><th class="n">Paid</th><th class="n">Their share</th></tr></thead><tbody>${mem.map(u=>`<tr><td>${esc(who(u))}</td><td class="n" style="font-weight:400">${fmtMoney(ex.paid[u]||0)}</td><td class="n">${fmtMoney(ex.share[u]||0)}</td></tr>`).join('')}</tbody></table></div>`;
+  h+=`<div class="card"><div class="bet-head"><b>Trip spending</b><span class="money">${fmtMoney(total)}</span></div><table style="margin-top:6px"><thead><tr><th>Player</th><th class="n">Paid</th><th class="n">Their share</th></tr></thead><tbody>${mem.map(u=>`<tr><td>${withPic(u,who(u))}</td><td class="n" style="font-weight:400">${fmtMoney(ex.paid[u]||0)}</td><td class="n">${fmtMoney(ex.share[u]||0)}</td></tr>`).join('')}</tbody></table></div>`;
   h+=settleCard(t,settleReceipts(t),'Settle up receipts','Receipts only: what each person paid minus their share.');
   h+=`<h2>All receipts</h2>`;
   list.forEach(e=>{
@@ -771,6 +781,28 @@ function expensesSection(t,mem,who){
  <button class="primary wide" style="margin-top:14px" data-act="addexpense" ${S.busy?'disabled':''}>${S.busy?'Saving…':'Add receipt'}</button></div>`;
  if(S.receiptView)h+=`<div class="overlay" role="dialog" aria-label="Receipt"><div class="row" style="flex:none"><b style="color:#fff">Receipt</b><button data-act="closereceipt" style="flex:none">Close</button></div>${S.receiptView.pdf?`<p style="color:#fff">This receipt is a PDF.</p><a class="primary" style="display:block;text-align:center;padding:12px;border-radius:10px;background:var(--green);color:var(--on-green)" href="${esc(S.receiptView.url)}" target="_blank" rel="noopener">Open PDF</a>`:`<img src="${esc(S.receiptView.url)}" alt="Receipt photo">`}</div>`;
  return h;
+}
+// Profile photo: crop to a centered square, shrink to 400px JPEG, upload to
+// avatars/<your id>/<random>.jpg, save the link, then remove the old file.
+async function uploadPhoto(file){
+ if(S.busy)return;
+ S.busy='photo';render();
+ try{
+  const url=URL.createObjectURL(file);
+  const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error('That file isn’t a photo the app can read. Try a JPEG or PNG.'));i.src=url});
+  const side=Math.min(img.naturalWidth,img.naturalHeight),c=document.createElement('canvas');c.width=c.height=400;
+  c.getContext('2d').drawImage(img,(img.naturalWidth-side)/2,(img.naturalHeight-side)/2,side,side,0,0,400,400);URL.revokeObjectURL(url);
+  const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',0.85));if(!blob)throw new Error('Couldn’t process that photo.');
+  const path=S.me+'/'+newId()+'.jpg';
+  const up=await sb.storage.from('avatars').upload(path,blob,{contentType:'image/jpeg',upsert:false});if(up.error)throw up.error;
+  const pub=sb.storage.from('avatars').getPublicUrl(path).data.publicUrl,old=photoOf(S.me);
+  const {error}=await sb.from('profiles').update({avatar_url:pub}).eq('id',S.me);
+  if(error){sb.storage.from('avatars').remove([path]);throw error}
+  S.profiles[S.me]={...me(),avatar_url:pub};
+  if(old)sb.storage.from('avatars').remove([old.slice(AVATAR_PREFIX.length)]).catch(()=>{});
+  toast('Photo updated');
+ }catch(e){fail(e,'Your photo didn’t upload.')}
+ S.busy=false;render();
 }
 // Shrinks photos to at most 1600px (JPEG) so uploads are quick and storage stays small.
 async function prepReceipt(file){
@@ -911,11 +943,11 @@ function boardCard(b){
   const tot=ps.reduce((a,p)=>a+pickAmt(p),0);
   const action=S.settling===b.id?`<button class="primary" data-act="settlebet" data-id="${esc(b.id)}" data-opt="${i}">Won</button>`
    :open?`<button data-pickbet="${esc(b.id)}" data-opt="${i}" aria-pressed="${!!mineHere}">${mineHere?'Your pick':'Pick'}</button>`:'';
-  h+=`<div class="opt${won?' won':''}"><div class="mid"><b>${esc(o)}${won?' ✓':''}${tot?` <span class="money" style="font-size:14px;color:var(--mute)">${fmtMoney(tot)}</span>`:''}</b><span>${ps.length?esc(ps.map(p=>who(p.user_id)+(pickAmt(p)?' '+fmtMoney(pickAmt(p)):'')).join(', ')):'No picks'}</span></div>${action}</div>`;
+  h+=`<div class="opt${won?' won':''}"><div class="mid"><b>${esc(o)}${won?' ✓':''}${tot?` <span class="money" style="font-size:14px;color:var(--mute)">${fmtMoney(tot)}</span>`:''}</b><span>${ps.length?ps.map(p=>withPic(p.user_id,who(p.user_id)+(pickAmt(p)?' '+fmtMoney(pickAmt(p)):''))).join(' '):'No picks'}</span></div>${action}</div>`;
  });
  if(open&&mine)h+=`<p style="margin:6px 0 0"><button class="link" data-act="unpick" data-id="${esc(b.id)}">Withdraw my pick</button></p>`;
  const pay=boardPayout(b);
- if(pay)h+=pay.pays.length?`<table style="margin-top:8px"><tbody>${pay.pays.map(x=>`<tr><td>${esc(who(x.from))} pay${x.from===S.me?'':'s'} ${esc(x.to===S.me?'you':handle(x.to))}</td><td class="n">${fmtMoney(x.amt)}</td></tr>`).join('')}</tbody></table>`
+ if(pay)h+=pay.pays.length?`<table style="margin-top:8px"><tbody>${pay.pays.map(x=>`<tr><td>${av(x.from,'xs')} ${esc(who(x.from))} pay${x.from===S.me?'':'s'} ${esc(x.to===S.me?'you':handle(x.to))}</td><td class="n">${fmtMoney(x.amt)}</td></tr>`).join('')}</tbody></table>`
   :`<p class="hint">No money changes hands${pot?' (nobody picked the losing side, or nobody picked the winner)':''}.</p>`;
  if(owner){
   const btn=(act,label,cls)=>`<button ${cls?`class="${cls}"`:''} data-act="${act}" data-id="${esc(b.id)}">${label}</button>`;
@@ -1092,8 +1124,8 @@ async function unfriend(id){
  loadAll();
 }
 async function shareInvite(){
- const url=inviteUrl(),text=`Add me on Tiger 5 so we can see each other's golf scores. My code is ${me().friend_code}.`;
- if(navigator.share){try{await navigator.share({title:'Tiger 5',text,url});return}catch(e){if(e&&e.name==='AbortError')return}}
+ const url=inviteUrl(),text=`Add me on The 19th so we can see each other's golf scores. My code is ${me().friend_code}.`;
+ if(navigator.share){try{await navigator.share({title:'The 19th',text,url});return}catch(e){if(e&&e.name==='AbortError')return}}
  try{await navigator.clipboard.writeText(text+' '+url);toast('Invite link copied')}catch(e){toast('Your invite link: '+url)}
 }
 
@@ -1184,6 +1216,12 @@ document.addEventListener('click',async e=>{
   toast('Round deleted');go('feed');return loadAll();
  }
  if(a==='import')return importOld();
+ if(a==='rmphoto'){
+  const old=photoOf(S.me);const {error}=await sb.from('profiles').update({avatar_url:null}).eq('id',S.me);
+  if(error)return fail(error,'Couldn’t remove your photo.');
+  S.profiles[S.me]={...me(),avatar_url:null};if(old)sb.storage.from('avatars').remove([old.slice(AVATAR_PREFIX.length)]).catch(()=>{});
+  toast('Photo removed');return render();
+ }
  if(a==='addexpense')return addExpense();
  if(a==='exnofile'){S.exFile=null;return render()}
  if(a==='viewreceipt'){
@@ -1256,6 +1294,7 @@ document.addEventListener('change',e=>{
  const id=e.target.id;
  if(id==='course'){const v=e.target.value,t=$('#tee');t.innerHTML=v?teeOpts(v):'<option value="">n/a</option>';t.disabled=!v;$('#otherWrap').hidden=!!v;const rs=v?teeRS(v,t.value):{r:'',s:''};$('#rating').value=rs.r;$('#slope').value=rs.s;updateCH()}
  if(id==='bkind'){S.betKind=e.target.value;return render()}
+ if(id==='avfile'){const f=e.target.files&&e.target.files[0];if(f)uploadPhoto(f);return}
  if(id==='exphoto'){const f=e.target.files&&e.target.files[0];if(f&&f.size>20e6)return toast('That file is too big. Try a smaller photo.');S.exFile=f||null;return render()}
  if(id==='tee'){const rs=teeRS($('#course').value,e.target.value);$('#rating').value=rs.r;$('#slope').value=rs.s;updateCH()}
 });

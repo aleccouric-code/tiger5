@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Tiger 5 Scorecard</title>
-<meta name="description" content="Golf scores, handicap index and Tiger 5 tracking for you and your friends.">
+<title>The 19th</title>
+<meta name="description" content="Golf scores, handicaps, Tiger 5 tracking, trips and side bets for you and your friends.">
 <meta name="theme-color" content="#2e6b45">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Tiger 5">
+<meta name="apple-mobile-web-app-title" content="The 19th">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -136,8 +136,8 @@ td.n,th.n{text-align:right;font-weight:800}
 input[type=file]{padding:8px;background:var(--card)}
 /* Feed card */
 .fcard{padding:0;overflow:hidden}
-.fmain{display:block;width:100%;text-align:left;border:0;border-radius:0;background:none;padding:14px 14px 12px;min-height:0}
-.fhead{display:flex;align-items:center;gap:10px}
+.fmain{display:block;width:100%;text-align:left;border:0;border-radius:0;background:none;padding:0 14px 12px;min-height:0}
+.fhead{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:0;border-radius:0;background:none;padding:14px 14px 0;min-height:0}
 .fhead .av{width:44px;height:44px;font-size:16px}
 .fhead .mid b{font-size:18px;font-weight:800}
 .fidx{color:var(--green);font-weight:600;font-size:15px;margin-left:2px}
@@ -156,6 +156,15 @@ input[type=file]{padding:8px;background:var(--card)}
 .factions button+button{border-left:1px solid var(--line)}
 .factions button[aria-pressed=true]{color:var(--green)}
 .card>.factions:only-child,.factions[style]{border:1px solid var(--line);border-radius:12px;background:var(--card);overflow:hidden}
+img.av{object-fit:cover;background:var(--line)}
+.av.xs{width:22px;height:22px;font-size:10px;display:inline-grid;vertical-align:middle;flex:none}
+.av.lg{width:84px;height:84px;font-size:30px;border:3px solid var(--green)}
+.npic{display:inline-flex;align-items:center;gap:6px;vertical-align:middle;max-width:100%}
+.npic>span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.opt .mid span .npic{margin-right:8px}
+.phead{display:flex;align-items:center;gap:14px;margin:0 0 14px}
+.filebtn{display:inline-block;margin:0 8px 0 0;padding:9px 14px;border-radius:10px;background:var(--green);color:var(--on-green);font-weight:600;cursor:pointer}
+.namelink{font-weight:800;color:var(--ink);text-decoration:none;padding:0;min-height:0}
 .rating{display:flex;flex-direction:column;align-items:center;text-align:center;gap:2px}
 .rating .rl{font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:.1em;font-weight:600}
 .rating b{font-size:28px;font-weight:800;line-height:1.2}

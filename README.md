@@ -1,4 +1,4 @@
-# Tiger 5 Scorecard
+# The 19th
 
 Golf scoring for you and your friends: Tiger 5 mistake tracking, a World Handicap System index, friend requests, and a shared feed of posted rounds. It runs on GitHub Pages, installs to a phone's home screen, and keeps scoring when you lose signal on the course.
 
@@ -50,6 +50,9 @@ On a trip, anyone can add a receipt: what it was for, the total, who paid, who i
 The Trips page splits **Current trips** and **Completed trips**. A trip is completed after its last day, or when the organizer taps **End trip** (which pulls the last day in to today so later rounds stop counting; **Reopen** undoes it).
 
 A trip page has four buttons: **Bets**, **Receipts**, **Rounds** and **Players**. Bets and receipts settle up separately: **Bets** ends with a bets-only settle-up, and **Receipts** has its own settle-up (what each person paid minus their share). Each lists the fewest payments that square that ledger.
+
+## Profiles and photos
+Tap any player's name or avatar (feed cards, round pages, comments, trip players) to open their profile; friends' profiles show their index, rating, averages and rounds. On the **Me** tab you can add, change or remove a profile photo. Photos are cropped to a 400px square and stored in the public `avatars` bucket under each player's own folder (only they can change it); the app only displays photos from that bucket.
 
 ## Feed, likes, comments and attests
 Each posted round shows as a card with Score, Putts, Tiger 5 and Differential circles (green = good, gold = so-so, red = rough), its trophy or poo rating, and 🍺 / 💨 GB totals. Friends can **Like** a round, **Comment** on it, and **Attest** it to vouch for the score (you can't attest your own). `supabase/social.sql` holds these tables (already applied to the live database); only people who can see a round can see or add to its likes, comments and attests.
