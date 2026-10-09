@@ -1,0 +1,49 @@
+# Tiger 5 Scorecard
+
+Golf scoring for you and your friends: Tiger 5 mistake tracking, a World Handicap System index, friend requests, and a shared feed of posted rounds. It runs on GitHub Pages, installs to a phone's home screen, and keeps scoring when you lose signal on the course.
+
+## Files
+
+| File | What it is |
+| --- | --- |
+| `index.html` | The page and its styles |
+| `app.js` | All app logic: scoring, handicap math, friends, sync |
+| `config.js` | Your Supabase project URL and anon key |
+| `supabase/schema.sql` | Database tables and security rules; run once in Supabase |
+| `manifest.webmanifest`, `sw.js`, `icons/` | Make it installable and usable offline |
+
+## One-time setup
+
+### 1. Create the Supabase project
+1. Sign up at [supabase.com](https://supabase.com) (free) and create a new project.
+2. Open **SQL Editor → New query**, paste the whole of `supabase/schema.sql`, and click **Run**.
+3. Open **Project Settings → API**. Copy the **Project URL** and the **anon public** key into `config.js`.
+
+### 2. Set up sign-in
+Players sign in with an email and password. The app never sends email, which avoids Supabase's built-in sender (limited to a couple of emails an hour).
+
+1. **Authentication → Sign In / Providers → Email**: make sure Email is enabled and turn **off** **Confirm email**. Save.
+2. **Authentication → URL Configuration**: set **Site URL** to `https://aleccouric-code.github.io/tiger5/`.
+
+**Forgotten passwords:** there's no self-service reset yet. In **Authentication → Users**, delete that player's account so they can sign up again with the same email. Their rounds and friendships are deleted with it, so only do this for someone who hasn't posted much. A proper reset flow needs custom SMTP (for example Resend) under **Authentication → Emails → SMTP Settings**.
+
+### 3. Publish
+Commit everything to the `tiger5` repo and push. GitHub Pages serves `index.html` at https://aleccouric-code.github.io/tiger5/.
+
+Whenever you change app files later, bump `VERSION` at the top of `sw.js` so installed phones pick up the update.
+
+## Inviting friends
+Open **Friends → Share invite link**. A friend who opens the link signs in with their email, picks a name, and gets a prompt to add you. They can also type your 6-letter friend code on their Friends page. You see each other's rounds once the request is accepted.
+
+## Installing on a phone
+- **iPhone:** open the link in Safari, tap **Share → Add to Home Screen**.
+- **Android:** open the link in Chrome, tap **⋮ → Install app** (or **Add to Home screen**).
+
+## Privacy
+The database's row level security only lets a player read their own rounds and the rounds of accepted friends. People are found only by friend code; there is no public player list.
+
+## Handicap notes
+Score differentials follow the World Handicap System: adjusted gross score (net double bogey per hole, or par + 5 before you have an index), course rating and slope, and the best-of-last-20 table. Nine-hole rounds are converted to 18-hole differentials using the WHS expected score. Playing conditions (PCC) and the soft and hard caps aren't applied, so the index is a close estimate rather than an official one.
+
+## Later: app stores
+The same code can be wrapped with [Capacitor](https://capacitorjs.com) to make iOS and Android apps. That needs an Apple Developer account ($99/year, plus a Mac to build) and a Google Play developer account ($25 once).

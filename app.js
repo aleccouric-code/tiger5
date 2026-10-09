@@ -1,0 +1,594 @@
+'use strict';
+
+/* ---------- Tiger 5 rules and courses ---------- */
+const RULES=[
+ {k:'r1',n:'No 6s on par-5s',t:(h)=>h.par===5&&h.score>=6},
+ {k:'r2',n:'No doubles',t:(h)=>h.score>=h.par+2},
+ {k:'r3',n:'No 3-putts',t:(h)=>h.putts>=3},
+ {k:'r4',n:'No bogeys with scoring clubs',t:(h)=>h.sc&&h.score>h.par},
+ {k:'r5',n:'No missed easy up-and-downs',t:(h)=>h.ud}
+];
+const T=(info,yds)=>({info,yds});
+const COURSES={
+sr:{name:'South Riding Golf Club',par:[5,4,5,4,3,4,3,4,4,5,3,4,4,3,5,4,4,4],si:[6,16,14,2,8,12,10,18,4,15,13,3,1,11,7,9,17,5],tees:{
+ Championship:T('7,148 yds · 74.9/140',[593,397,546,431,232,406,206,345,474,523,199,404,426,206,569,404,354,433]),
+ Tournament:T('6,473 yds · 71.9/133',[542,373,501,392,195,366,188,328,404,494,153,370,375,189,524,376,308,395]),
+ Medal:T('6,070 yds · 70.0/128',[542,373,460,346,153,366,142,328,371,444,153,370,375,141,524,327,308,347]),
+ Club:T('5,720 yds · 68.3/126',[503,363,460,346,153,322,142,282,371,444,129,329,332,141,472,327,257,347])}},
+wc:{name:'Whiskey Creek Golf Club',par:[4,4,3,5,4,4,3,4,5,4,3,4,4,4,3,5,4,5],si:[5,13,9,1,3,11,17,7,15,8,14,2,6,10,12,16,4,18],tees:{
+ Black:T('7,001 yds · 74.6/138',[406,390,196,558,402,344,157,391,545,387,198,445,416,427,222,545,425,547]),
+ Blue:T('6,525 yds · 72.3/136',[381,363,169,532,371,323,134,359,509,364,173,413,398,411,191,516,402,516]),
+ White:T('5,979 yds · 69.3/129',[328,321,137,486,360,297,108,319,478,323,141,397,383,382,166,482,387,484])}},
+bm:{name:'Blue Mash Golf Course',par:[4,4,4,3,5,3,4,4,5,4,3,5,3,4,4,4,3,5],si:[3,9,1,13,7,17,11,15,5,14,16,8,18,12,10,2,4,6],tees:{
+ Gold:T('6,885 yds · 73.0/134',[449,452,478,206,580,160,392,310,548,398,217,500,177,378,423,463,192,562]),
+ Blue:T('6,502 yds · 71.2/126',[424,428,453,190,533,143,386,283,522,367,204,476,160,360,400,445,177,551]),
+ 'Blue/White':T('6,294 yds',[389,401,426,172,533,143,386,283,500,367,189,476,160,360,400,430,158,521])}},
+wm:{name:'Worthington Manor Golf Club',par:[4,4,4,4,5,3,4,3,5,4,4,4,5,4,3,4,3,5],si:[7,3,1,9,15,13,17,11,5,14,18,2,10,16,12,6,4,8],tees:{
+ Black:T('7,034 yds · 74.7/145',[414,395,437,430,533,198,372,175,556,379,359,459,555,361,193,470,223,525]),
+ Blue:T('6,525 yds · 72.4/137',[384,358,411,401,503,171,339,169,536,346,332,423,522,340,170,430,188,502]),
+ White:T('6,058 yds · 70.0/132',[366,326,396,378,485,145,309,155,513,326,302,381,481,318,136,398,161,482]),
+ Red:T('5,206 yds · 70.1/127',[334,285,329,341,450,126,206,147,428,296,225,346,421,280,111,345,124,412])}},
+wf:{name:'Westfields Golf Club',par:[4,4,3,5,4,4,3,4,4,4,5,3,4,4,5,4,3,4],si:[13,11,5,7,9,3,17,1,15,12,8,14,10,18,4,6,16,2],tees:{
+ 'Boom Boom':T('6,897 yds · 73.4/141',[408,416,223,570,448,473,180,467,390,412,525,194,365,285,554,384,160,443]),
+ Blue:T('6,496 yds · 71.6/137',[388,394,197,541,420,459,157,441,368,388,507,171,349,264,530,354,146,422]),
+ White:T('6,034 yds · 69.5/132',[356,361,155,520,379,433,141,406,345,368,468,160,337,250,501,329,126,399]),
+ 'White/Green':T('5,724 yds · 68.1/128',[356,361,155,520,331,392,128,382,345,368,468,145,308,250,465,291,126,333])}},
+rf:{name:'Raspberry Falls Golf & Hunt Club',par:[4,4,4,5,3,4,3,4,5,4,5,4,3,4,3,4,4,5],si:[9,5,3,11,13,15,17,1,7,2,6,12,16,4,14,10,18,8],tees:{
+ Black:T('7,165 yds',[383,428,480,538,202,334,189,441,531,460,594,433,184,439,213,413,369,534]),
+ Raspberry:T('4,878 yds',[232,302,376,408,99,212,130,259,393,286,445,289,110,290,126,268,251,402])}},
+hc:{name:'Herndon Centennial Golf Course',par:[4,4,5,4,3,4,3,4,4,4,4,4,4,3,5,3,5,4],si:[1,9,7,13,15,5,11,3,17,12,2,8,6,18,14,16,10,4],tees:{
+ Black:T('6,197 yds · 69.7/126',[407,361,509,360,173,368,172,355,310,343,402,410,386,136,482,133,485,405]),
+ Blue:T('5,774 yds · 68.1/122',[387,347,466,303,157,355,149,335,297,326,361,376,375,111,463,118,478,370])}},
+rn:{name:'Reston National Golf Course',par:[4,5,3,4,5,3,4,4,4,4,3,4,4,4,5,3,4,4],si:[14,18,16,8,10,12,4,2,6,1,17,7,3,11,13,5,9,15],tees:{
+ Gold:T('6,880 yds · 73.0/131',[394,536,183,422,522,208,416,396,408,462,172,426,443,377,527,202,414,372])}}
+};
+
+/* ---------- helpers ---------- */
+const $=(s)=>document.querySelector(s);
+const esc=(s)=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const rel=(n)=>n===0?'E':(n>0?'+'+n:''+n);
+const fmtIdx=(v)=>v==null?'—':(v<0?'+'+(-v).toFixed(1):v.toFixed(1));
+const fmtDiff=(v)=>v==null?'—':v.toFixed(1);
+const played=(h)=>h.score!=null;
+const fails=(h)=>played(h)?RULES.filter(r=>r.t(h)):[];
+const isoDate=(d)=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const today=()=>isoDate(new Date());
+const fmtDate=(s)=>{if(!s)return'';const [y,m,d]=s.split('-').map(Number);const dt=new Date(y,m-1,d);return dt.toLocaleDateString(undefined,{month:'short',day:'numeric',...(y!==new Date().getFullYear()?{year:'numeric'}:{})})};
+const newId=()=>(crypto.randomUUID?crypto.randomUUID():'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c==='x'?r:(r&3|8)).toString(16)}));
+const AVC=['#2e6b45','#8a5a1f','#3d5a80','#7a3b52','#5b6b2e','#2f6f73','#6b4c9a','#a0442c'];
+const avColor=(id)=>{let h=0;for(const c of String(id))h=(h*31+c.charCodeAt(0))>>>0;return AVC[h%AVC.length]};
+const initials=(n)=>(n||'?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();
+const teeRS=(c,t)=>{const m=((COURSES[c]&&COURSES[c].tees[t]&&COURSES[c].tees[t].info)||'').match(/([\d.]+)\/(\d+)/);return m?{r:m[1],s:m[2]}:{r:'',s:''}};
+const teeOpts=(c)=>Object.entries(COURSES[c].tees).map(([k,v])=>`<option value="${esc(k)}">${esc(k)} · ${esc(v.info)}</option>`).join('');
+const LS={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{v==null?localStorage.removeItem(k):localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+
+/* ---------- handicap (World Handicap System) ---------- */
+const TABLE={3:[1,-2],4:[1,-1],5:[1,0],6:[2,-1],7:[2,0],8:[2,0],9:[3,0],10:[3,0],11:[3,0],12:[4,0],13:[4,0],14:[4,0],15:[5,0],16:[5,0],17:[6,0],18:[6,0],19:[7,0],20:[8,0]};
+function hcp(rounds){
+ const rs=(rounds||[]).filter(r=>typeof r.diff==='number').sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.at||0)-(a.at||0)).slice(0,20);
+ const t=TABLE[rs.length];
+ if(!t)return{index:null,rs,used:new Set(),need:3-rs.length};
+ const low=[...rs].sort((a,b)=>a.diff-b.diff).slice(0,t[0]);
+ const v=low.reduce((a,r)=>a+r.diff,0)/t[0]+t[1];
+ return{index:Math.min(54,Math.round(v*10)/10),rs,used:new Set(low.map(r=>r.id)),take:t[0]};
+}
+function courseHcp(index,n,rating,slope,par){
+ if(index==null||!rating||!slope)return null;
+ return n===9?Math.round((index/2)*slope/113+(rating/2-par)):Math.round(index*slope/113+(rating-par));
+}
+function calc(r,index){
+ const hs=r.holes,n=hs.length,ph=hs.filter(played);
+ const par=hs.reduce((a,h)=>a+h.par,0),score=ph.reduce((a,h)=>a+h.score,0),parPlayed=ph.reduce((a,h)=>a+h.par,0);
+ const putts=ph.reduce((a,h)=>a+(h.putts||0),0);
+ const per={};RULES.forEach(x=>per[x.k]=ph.filter(h=>x.t(h)).length);
+ const t5=Object.values(per).reduce((a,b)=>a+b,0);
+ const rating=+r.rating,slope=+r.slope;
+ const okRS=rating>=25&&rating<=85&&slope>=55&&slope<=155;
+ const ch=okRS?courseHcp(index,n,rating,slope,par):null;
+ const order=hs.map((h,i)=>({i,si:h.si||i+1})).sort((a,b)=>a.si-b.si);
+ const rank={};order.forEach((o,k)=>rank[o.i]=k+1);
+ const strokes=(i)=>{if(ch==null)return 0;if(ch>=0)return Math.floor(ch/n)+(rank[i]<=ch%n?1:0);return rank[i]>n+ch?-1:0};
+ let ags=0;hs.forEach((h,i)=>{if(played(h))ags+=Math.min(h.score,h.par+(ch==null?5:2+strokes(i)))});
+ const complete=ph.length===n;
+ let diff=null;
+ if(complete&&okRS){
+  diff=(113/slope)*(ags-(n===9?rating/2:rating));
+  if(n===9)diff=index==null?diff*2:diff+(0.52*index+1.2);
+  diff=Math.round(diff*10)/10;
+ }
+ return{n,par,parPlayed,score,putts,per,t5,ch,ags,diff,complete,net:ch==null?null:score-ch,holesPlayed:ph.length};
+}
+
+/* ---------- Supabase ---------- */
+const CFG=window.TIGER5_CONFIG||{};
+const configured=!!(CFG.supabaseUrl&&CFG.supabaseAnonKey&&!/YOUR-/.test(CFG.supabaseUrl+CFG.supabaseAnonKey));
+const sb=configured&&window.supabase?window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseAnonKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}}):null;
+
+const fromRow=(r)=>({id:r.id,uid:r.user_id,course:r.course,tee:r.tee,rating:r.rating==null?null:+r.rating,slope:r.slope,date:r.date,nine:r.nine,holes:r.holes||[],n:r.n,par:r.par,parPlayed:r.par_played,score:r.score,putts:r.putts,per:r.per||{},t5:r.t5,ch:r.ch,ags:r.ags,diff:r.diff==null?null:+r.diff,complete:r.complete,net:r.net,holesPlayed:r.holes_played,at:Date.parse(r.created_at)||0,pending:!!r._pending});
+function toRow(d,t,index,extra){
+ return{id:d.id,user_id:S.me,course:d.course,tee:d.tee||null,rating:+d.rating||null,slope:+d.slope||null,date:d.date,nine:d.nine||null,holes:d.holes,
+  n:t.n,par:t.par,par_played:t.parPlayed,score:t.score,putts:t.putts,per:t.per,t5:t.t5,ch:t.ch,ags:t.ags,diff:t.diff,complete:t.complete,net:t.net,holes_played:t.holesPlayed,index_at_post:index,...(extra||{})};
+}
+
+/* ---------- state ---------- */
+const DKEY='tiger5-draft-v2',OLDKEY='tiger5-rounds-v1',IMPKEY='tiger5-imported-v1',OUTKEY='tiger5-outbox',CACHEKEY='tiger5-cache',INVKEY='tiger5-invite';
+const S={status:'loading',me:null,email:'',profiles:{},friendships:[],rounds:{},view:'feed',arg:null,busy:false,confirm:null,editName:false,nsel:'18',authStep:'signin',authEmail:'',offline:false,invite:null};
+let draft=LS.get(DKEY,null),hidx=0,playView=draft&&draft.holes?'hole':'start',lastKey='';
+if(draft&&!draft.holes)draft=null;
+const saveDraft=()=>LS.set(DKEY,draft);
+const oldRounds=()=>LS.get(IMPKEY,null)?[]:LS.get(OLDKEY,[]);
+
+const me=()=>S.profiles[S.me]||{};
+const handle=(id)=>(S.profiles[id]&&S.profiles[id].handle)||'Golfer';
+const other=(f)=>f.requester===S.me?f.addressee:f.requester;
+const friendIds=()=>S.friendships.filter(f=>f.status==='accepted').map(other);
+const incoming=()=>S.friendships.filter(f=>f.status==='pending'&&f.addressee===S.me).map(f=>f.requester);
+const outgoing=()=>S.friendships.filter(f=>f.status==='pending'&&f.requester===S.me).map(f=>f.addressee);
+const isFriend=(id)=>friendIds().includes(id);
+const myIndex=()=>hcp(S.rounds[S.me]).index;
+
+let toastT;
+function toast(msg){const t=$('#toast');t.textContent=msg;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,3500)}
+const isNetErr=(e)=>!navigator.onLine||(e&&(e instanceof TypeError||/fetch|network/i.test(e.message||'')));
+function fail(e,what){console.error(e);toast(isNetErr(e)?'You’re offline. Try again when you have signal.':(what||'That didn’t save.')+' '+(e&&e.message?e.message:''))}
+
+/* ---------- loading ---------- */
+function cacheSave(){LS.set(CACHEKEY,{me:S.me,profiles:S.profiles,friendships:S.friendships,rounds:S.rounds})}
+function cacheLoad(){const c=LS.get(CACHEKEY,null);if(!c||c.me!==S.me)return false;S.profiles=c.profiles||{};S.friendships=c.friendships||[];S.rounds=c.rounds||{};return true}
+
+async function loadAll(){
+ try{
+  const {data:prof,error:e1}=await sb.from('profiles').select('id,handle,friend_code').eq('id',S.me).maybeSingle();if(e1)throw e1;
+  if(!prof){S.status='setup';return render()}
+  const profiles={[S.me]:prof};
+  const {data:fr,error:e2}=await sb.from('friendships').select('*');if(e2)throw e2;
+  S.friendships=fr||[];
+  const others=[...new Set(S.friendships.map(other))];
+  if(others.length){const {data:ps,error}=await sb.from('profiles').select('id,handle').in('id',others);if(error)throw error;(ps||[]).forEach(p=>profiles[p.id]=p)}
+  S.profiles=profiles;
+  const ids=[S.me,...friendIds()];
+  const {data:rs,error:e3}=await sb.from('rounds').select('*').in('user_id',ids).order('date',{ascending:false}).order('created_at',{ascending:false}).limit(1000);if(e3)throw e3;
+  const rounds={};ids.forEach(i=>rounds[i]=[]);(rs||[]).forEach(r=>{const x=fromRow(r);(rounds[x.uid]=rounds[x.uid]||[]).push(x)});
+  S.rounds=rounds;addPendingLocal();
+  S.status='ready';S.offline=false;cacheSave();
+  render();
+  flushOutbox();checkInvite();
+ }catch(e){
+  console.error(e);
+  if(cacheLoad()){S.status='ready';S.offline=true;addPendingLocal()}
+  else if(S.status==='loading')S.status='error';
+  render();
+ }
+}
+function addPendingLocal(){
+ const mine=S.rounds[S.me]=S.rounds[S.me]||[];
+ LS.get(OUTKEY,[]).forEach(row=>{if(!mine.some(r=>r.id===row.id))mine.unshift(fromRow({...row,created_at:new Date().toISOString(),_pending:true}))});
+}
+let flushing=false;
+async function flushOutbox(){
+ if(!sb||!S.me||flushing)return;
+ let box=LS.get(OUTKEY,[]);if(!box.length)return;
+ flushing=true;let posted=0;
+ try{
+  for(const row of box){
+   const {error}=await sb.from('rounds').upsert(row);
+   if(error)throw error;
+   posted++;box=LS.get(OUTKEY,[]).filter(r=>r.id!==row.id);LS.set(OUTKEY,box);
+  }
+ }catch(e){if(!isNetErr(e))fail(e,'A saved round didn’t post.')}
+ flushing=false;
+ if(posted){toast(posted===1?'Round posted':posted+' rounds posted');loadAll()}
+}
+
+/* ---------- invites ---------- */
+function captureInvite(){
+ const m=location.hash.match(/^#invite-([A-Za-z0-9]{4,12})$/);
+ if(m){LS.set(INVKEY,m[1].toUpperCase());history.replaceState(null,'',location.pathname+location.search)}
+}
+async function checkInvite(){
+ const code=LS.get(INVKEY,null);if(!code)return;
+ LS.set(INVKEY,null);
+ if(code===me().friend_code)return;
+ const p=await findPlayer(code);
+ if(p&&p.id!==S.me&&!isFriend(p.id)){S.invite=p;S.view='friends';render()}
+}
+async function findPlayer(code){
+ const {data,error}=await sb.rpc('find_player',{code});
+ if(error){fail(error,'Couldn’t look up that code.');return null}
+ return data&&data[0]||null;
+}
+const inviteUrl=()=>location.origin+location.pathname+'#invite-'+(me().friend_code||'');
+
+/* ---------- rendering ---------- */
+function render(){
+ const key=S.status+'|'+S.view+'|'+S.arg+'|'+playView+'|'+S.authStep;
+ const keep={};
+ if(key===lastKey)document.querySelectorAll('#app input,#app select').forEach(e=>{if(e.id)keep[e.id]=e.value});
+ const focus=document.activeElement&&document.activeElement.id;
+ let html;
+ if(S.status==='auth')html=authView();
+ else if(S.status==='setup')html=setupView();
+ else if(S.view==='play')html=playHtml();
+ else if(S.status==='loading')html=header('Tiger 5')+`<div class="empty"><b>Loading your group…</b>Rounds and friends appear here in a moment.</div>`;
+ else if(S.status!=='ready')html=header('Tiger 5')+offlineView();
+ else if(S.view==='friends')html=friendsView();
+ else if(S.view==='player')html=playerView(S.arg||S.me);
+ else if(S.view==='round')html=roundView(S.arg);
+ else html=feedView();
+ $('#app').innerHTML=html;
+ for(const id in keep){const el=document.getElementById(id);if(el)el.value=keep[id]}
+ if(focus&&key===lastKey){const el=document.getElementById(focus);if(el&&el.focus)el.focus()}
+ if(key!==lastKey)window.scrollTo(0,0);
+ if(S.view==='play'&&playView==='start'&&S.status!=='auth'&&S.status!=='setup')syncStart(key!==lastKey);
+ lastKey=key;
+ renderTabs();
+}
+function renderTabs(){
+ const hide=S.status==='auth'||S.status==='setup';
+ const n=S.status==='ready'?incoming().length:0;
+ const cur=S.view==='player'&&(S.arg||S.me)===S.me?'me':(S.view==='round'||S.view==='player')?'':S.view;
+ const t=[['feed','Feed'],['play',draft?'Round':'Play'],['friends','Friends'],['me','Me']];
+ $('#tabs').innerHTML=hide?'':`<div>${t.map(([k,l])=>`<button data-nav="${k}" ${cur===k?'aria-current="page"':''}>${l}${k==='friends'&&n?`<span class="badge">${n}</span>`:''}</button>`).join('')}</div>`;
+}
+function header(title,eyebrow){
+ const ready=S.status==='ready';
+ return `<header class="top"><div style="min-width:0"><span class="eyebrow">${esc(eyebrow||'Tiger 5')}${S.offline&&ready?' · offline':''}</span><h1>${esc(title)}</h1></div>${ready?`<button class="idx" data-nav="me" aria-label="Your handicap index"><b>${fmtIdx(myIndex())}</b><span>Index</span></button>`:''}</header>`;
+}
+const av=(id)=>`<span class="av" style="background:${avColor(id)}" aria-hidden="true">${esc(initials(handle(id)))}</span>`;
+
+function offlineView(){
+ const msg=!configured?'This copy isn’t connected to a database yet. Add your Supabase details to config.js (see README.md).'
+  :!window.supabase?'You’re offline and the app hasn’t been opened online on this phone yet. Connect once to sign in.'
+  :'Your scores didn’t load. Check your connection and reload.';
+ return `<div class="card note"><p style="margin:0">${msg}</p></div><button class="primary wide" data-nav="play">Keep score anyway</button>`;
+}
+function authView(){
+ const up=S.authStep==='signup';
+ return `${header(up?'Create account':'Sign in','Tiger 5')}
+ <div class="card"><p style="margin-top:0">Track your score, your handicap index and the five mistakes that cost you strokes, and see your friends’ rounds.</p>
+ <div class="seg" style="margin-bottom:4px"><button data-act="authmode" data-m="signin" aria-pressed="${!up}">Sign in</button><button data-act="authmode" data-m="signup" aria-pressed="${up}">Create account</button></div>
+ <label for="email">Email</label><input id="email" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" value="${esc(S.authEmail)}">
+ <label for="pw">Password</label><input id="pw" type="password" autocomplete="${up?'new-password':'current-password'}" placeholder="${up?'At least 8 characters':''}">
+ ${up?`<label for="pw2">Confirm password</label><input id="pw2" type="password" autocomplete="new-password">`:''}
+ <button class="primary wide" style="margin-top:14px" data-act="${up?'signup':'signin'}" ${S.busy?'disabled':''}>${S.busy?'One moment…':up?'Create account':'Sign in'}</button>
+ ${up?'':`<p class="hint">Forgot your password? Ask whoever invited you to reset your account.</p>`}
+ </div>${LS.get(INVKEY,null)?`<p class="sub">You were invited by a friend. ${up?'Create an account':'Sign in'} and we’ll connect you.</p>`:''}`;
+}
+function setupView(){
+ return `${header('Welcome','Tiger 5')}
+ <div class="card"><label for="handle">Your name in the app</label><input id="handle" maxlength="30" autocomplete="nickname" placeholder="e.g. Alec C.">
+ <p class="hint">This is how friends will see you.</p>
+ <button class="primary wide" style="margin-top:14px" data-act="join" ${S.busy?'disabled':''}>Continue</button></div>`;
+}
+
+function allFeedRounds(){
+ return [S.me,...friendIds()].flatMap(id=>S.rounds[id]||[]).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.at||0)-(a.at||0));
+}
+function roundItem(r,showWho=true){
+ return `<button class="card item" data-round="${esc(r.uid)}/${esc(r.id)}">
+  ${showWho?av(r.uid):''}
+  <div class="mid"><b>${showWho?esc(r.uid===S.me?'You':handle(r.uid))+' · ':''}${esc(r.course)}</b>
+  <span>${fmtDate(r.date)}${r.n===9?' · 9 holes':''}${r.tee?' · '+esc(r.tee):''}</span>
+  <div class="tags"><span class="tag ${r.t5>=Math.round(r.n/2)?'red':''}">Tiger 5 misses ${r.t5}</span>${r.diff!=null?`<span class="tag gold">Diff ${fmtDiff(r.diff)}</span>`:''}${r.pending?'<span class="tag red">Waiting to post</span>':''}</div></div>
+  <div class="score"><b>${r.score}</b><span>${r.complete?rel(r.score-r.parPlayed):r.holesPlayed+' holes'}</span></div></button>`;
+}
+function feedView(){
+ const rs=allFeedRounds().slice(0,80);
+ let h=header('Feed');
+ const inc=incoming().length;
+ if(inc)h+=`<button class="card item note" data-nav="friends"><div class="mid"><b>${inc} friend request${inc>1?'s':''}</b><span>Tap to review</span></div></button>`;
+ if(draft)h+=`<button class="card item" data-nav="play"><div class="mid"><b>Round in progress</b><span>${esc(draft.course)}</span></div><span class="tag">Resume</span></button>`;
+ if(!rs.length)h+=`<div class="card empty"><b>No posted rounds yet</b>Play a round and post it, or add friends to see theirs here.<div class="row" style="margin-top:14px"><button class="primary" data-nav="play">Start a round</button><button data-nav="friends">Add friends</button></div></div>`;
+ else h+=rs.map(r=>roundItem(r)).join('');
+ return h;
+}
+
+function friendsView(){
+ let h=header('Friends');
+ const inc=incoming(),out=outgoing(),fr=friendIds();
+ if(S.invite)h+=`<div class="card note item">${av(S.invite.id)}<div class="mid"><b>${esc(S.invite.handle)}</b><span>Invited you to be friends</span></div><button class="primary" data-act="addinvite">Add</button><button class="link" data-act="dropinvite">Not now</button></div>`;
+ if(inc.length){h+=`<h2>Requests</h2>`;inc.forEach(id=>h+=`<div class="card item">${av(id)}<div class="mid"><b>${esc(handle(id))}</b><span>Wants to share scores with you</span></div><button class="primary" data-act="accept" data-id="${esc(id)}">Accept</button><button class="link" data-act="unfriend" data-id="${esc(id)}">Ignore</button></div>`)}
+ h+=`<h2>Invite friends</h2><div class="card"><p style="margin-top:0">Send your invite link, or have friends enter your code on their Friends page.</p>
+  <div class="row"><span class="code">${esc(me().friend_code||'——')}</span><button class="primary" data-act="share">Share invite link</button></div>
+  <label for="fcode">Add a friend by code</label><div class="row"><input id="fcode" maxlength="12" autocapitalize="characters" placeholder="ABC123"><button style="flex:none" data-act="addcode">Add</button></div></div>`;
+ h+=`<h2>Handicap standings</h2>`;
+ const st=[S.me,...fr].map(id=>({id,h:hcp(S.rounds[id]),n:(S.rounds[id]||[]).length})).sort((a,b)=>(a.h.index==null)-(b.h.index==null)||(a.h.index||0)-(b.h.index||0));
+ h+=`<div class="card"><table><thead><tr><th>Player</th><th class="n">Rounds</th><th class="n">Index</th></tr></thead><tbody>${st.map((s,i)=>`<tr><td><button class="link plain" style="color:var(--ink);text-decoration:none;font-weight:600" data-player="${esc(s.id)}">${i+1}. ${esc(s.id===S.me?'You':handle(s.id))}</button></td><td class="n" style="font-weight:400">${s.n}</td><td class="n">${fmtIdx(s.h.index)}</td></tr>`).join('')}</tbody></table>${fr.length?'':`<p class="hint">Add friends to compare handicaps.</p>`}</div>`;
+ if(fr.length){h+=`<h2>Your friends</h2>`;fr.forEach(id=>{const x=hcp(S.rounds[id]);h+=`<div class="card item"><button class="item plain" data-player="${esc(id)}">${av(id)}<div class="mid"><b>${esc(handle(id))}</b><span>Index ${fmtIdx(x.index)} · ${(S.rounds[id]||[]).length} rounds</span></div></button>${S.confirm==='rm:'+id?`<button data-act="unfriend" data-id="${esc(id)}">Remove</button><button class="link" data-act="cancelc">Keep</button>`:`<button class="link" data-act="ask" data-c="rm:${esc(id)}">Remove</button>`}</div>`})}
+ if(out.length){h+=`<h2>Waiting on them</h2>`;out.forEach(id=>h+=`<div class="card item">${av(id)}<div class="mid"><b>${esc(handle(id))}</b><span>Request sent</span></div><button class="link" data-act="unfriend" data-id="${esc(id)}">Cancel</button></div>`)}
+ return h;
+}
+
+function diffChart(x){
+ const rs=[...x.rs].reverse();if(!rs.length)return'';
+ const W=320,H=110,pad=18,bw=(W-pad)/20;
+ const vals=rs.map(r=>r.diff),hi=Math.max(...vals,1),lo=Math.min(0,...vals);
+ const y=(v)=>8+(H-26)*(1-(v-lo)/(hi-lo||1));
+ let s=`<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Last ${rs.length} score differentials, oldest to newest">`;
+ s+=`<line x1="${pad}" x2="${W}" y1="${y(lo)}" y2="${y(lo)}" stroke="var(--line)"/><text x="0" y="${y(hi)+4}" font-size="10" fill="var(--mute)">${hi.toFixed(0)}</text><text x="0" y="${y(lo)+4}" font-size="10" fill="var(--mute)">${lo.toFixed(0)}</text>`;
+ if(x.index!=null)s+=`<line x1="${pad}" x2="${W}" y1="${y(x.index)}" y2="${y(x.index)}" stroke="var(--gold)" stroke-dasharray="4 3"/>`;
+ rs.forEach((r,i)=>{const used=x.used.has(r.id),top=y(Math.max(r.diff,lo)),base=y(lo);s+=`<rect x="${pad+i*bw+2}" y="${Math.min(top,base-2)}" width="${bw-4}" height="${Math.max(2,base-top)}" rx="2" fill="${used?'var(--green)':'var(--line)'}"/>`});
+ return s+`<text x="${pad}" y="${H-2}" font-size="10" fill="var(--mute)">oldest</text><text x="${W}" y="${H-2}" font-size="10" fill="var(--mute)" text-anchor="end">newest</text></svg>`;
+}
+function playerView(id){
+ const mineView=id===S.me;
+ if(!mineView&&!isFriend(id))return header('Player')+`<div class="card empty"><b>Scores are shared between friends</b>Add ${esc(handle(id))} as a friend to see their rounds.</div>`;
+ const rounds=S.rounds[id]||[],x=hcp(rounds);
+ let h=header(mineView?'Your card':handle(id),mineView?'Tiger 5':'Friend');
+ if(mineView){
+  h+=S.editName?`<div class="card"><label for="newname">Your name in the app</label><input id="newname" maxlength="30" value="${esc(me().handle||'')}"><div class="row" style="margin-top:10px"><button class="primary" data-act="savename">Save</button><button data-act="cancelname">Cancel</button></div></div>`
+   :`<p class="sub">Playing as <b>${esc(me().handle||'')}</b> · <button class="link" data-act="editname">Change name</button> · <button class="link" data-act="signout">Sign out</button></p>`;
+ }
+ const complete=rounds.filter(r=>r.complete),holes=complete.reduce((a,r)=>a+r.n,0);
+ const t5per18=holes?complete.reduce((a,r)=>a+r.t5,0)/holes*18:null;
+ const f18=complete.filter(r=>r.n===18);
+ h+=`<div class="card big"><div><b>${fmtIdx(x.index)}</b><span>Handicap index</span></div><div><b>${f18.length?Math.round(f18.reduce((a,r)=>a+r.score,0)/f18.length):'—'}</b><span>Avg 18-hole score</span></div><div><b>${t5per18==null?'—':t5per18.toFixed(1)}</b><span>Tiger 5 misses per 18</span></div></div>`;
+ if(x.index==null)h+=`<p class="sub">${x.rs.length?`${x.need} more rated round${x.need>1?'s':''} until ${mineView?'your':'their'} index is set.`:'Post 3 complete rounds with a course rating and slope to get an index.'}</p>`;
+ if(x.rs.length)h+=`<div class="card"><b>Last ${x.rs.length} differentials</b>${diffChart(x)}<p class="hint" style="margin-top:4px">${x.index!=null?`Green bars are the ${x.take} lowest; they set the index (dashed line).`:'Differentials so far.'}</p></div>`;
+ if(holes){
+  h+=`<h2>Where the strokes go</h2><div class="card"><table>`;
+  RULES.forEach(r=>{const c=complete.reduce((a,z)=>a+((z.per&&z.per[r.k])||0),0)/holes*18;h+=`<tr><td>${r.n}<div class="bar"><i style="width:${Math.min(100,c/3*100)}%"></i></div></td><td class="n">${c.toFixed(1)}</td></tr>`});
+  h+=`</table><p class="hint">Average misses per 18 holes.</p></div>`;
+ }
+ if(mineView){const old=oldRounds();if(old.length)h+=`<div class="card note"><b>${old.length} round${old.length>1?'s':''} saved on this phone</b><p style="margin:4px 0 10px">These are from the old version of the app. Post them to your card so they count.</p><button class="primary" data-act="import" ${S.busy?'disabled':''}>Post ${old.length} round${old.length>1?'s':''}</button></div>`}
+ h+=`<h2>Rounds</h2>`;
+ h+=rounds.length?rounds.map(r=>roundItem(r,false)).join(''):`<div class="card empty"><b>No rounds yet</b>${mineView?'Tap Play to start your first one.':'Nothing posted yet.'}</div>`;
+ return h;
+}
+
+function roundView(key){
+ const [u,rid]=(key||'').split('/');
+ const r=(S.rounds[u]||[]).find(z=>z.id===rid);
+ if(!r)return header('Round')+`<div class="card empty"><b>Round not found</b>It may have been deleted.</div>`;
+ const mine=u===S.me,x=hcp(S.rounds[u]);
+ let h=header(r.course,(mine?'You':handle(u))+' · '+fmtDate(r.date));
+ h+=`<p class="sub">${r.tee?esc(r.tee)+' tees · ':''}${r.rating?`${r.rating}/${r.slope}`:'No rating'}${r.n===9?' · 9 holes':''}${x.used.has(r.id)?' · <span class="tag">Counts toward index</span>':''}</p>`;
+ h+=`<div class="card big"><div><b>${r.score}</b><span>${r.complete?rel(r.score-r.parPlayed)+' to par':r.holesPlayed+' holes'}</span></div><div><b>${r.net!=null?r.net:'—'}</b><span>Net${r.ch!=null?` (CH ${r.ch})`:''}</span></div><div><b>${fmtDiff(r.diff)}</b><span>Differential</span></div><div><b>${r.t5}</b><span>Tiger 5</span></div></div>`;
+ const hs=r.holes||[],start=r.nine==='back'?10:1;
+ const rows=(from,to)=>{const sl=hs.slice(from,to);if(!sl.length)return'';const sum=(f)=>sl.reduce((a,h)=>a+(f(h)||0),0);
+  return `<div class="scroll" style="margin-bottom:8px"><table class="sc"><tr><th>Hole</th>${sl.map((_,i)=>`<th>${start+from+i}</th>`).join('')}<th>Tot</th></tr>
+  <tr><td>Par</td>${sl.map(h=>`<td>${h.par}</td>`).join('')}<td>${sum(h=>h.par)}</td></tr>
+  <tr><td>Score</td>${sl.map(h=>`<td class="${fails(h).length?'miss':played(h)&&h.score<h.par?'u':''}">${played(h)?h.score:'–'}</td>`).join('')}<td><b>${sum(h=>h.score)}</b></td></tr>
+  <tr><td>Putts</td>${sl.map(h=>`<td>${played(h)?h.putts:'–'}</td>`).join('')}<td>${sum(h=>played(h)?h.putts:0)}</td></tr></table></div>`};
+ h+=`<div class="card">${rows(0,9)}${rows(9,18)}<p class="hint" style="margin:0">Red holes broke a Tiger 5 rule. Green holes were under par.</p></div>`;
+ h+=`<h2>Tiger 5</h2><div class="card"><table>`;
+ RULES.forEach(q=>{const c=(r.per&&r.per[q.k])||0;h+=`<tr><td>${q.n}<div class="bar"><i style="width:${r.holesPlayed?Math.min(100,c/r.holesPlayed*300):0}%"></i></div></td><td class="n">${c}</td></tr>`});
+ h+=`</table></div>`;
+ if(mine&&!r.pending)h+=S.confirm==='del'?`<div class="card note"><p style="margin-top:0">Delete this round for good? It also comes off your handicap.</p><div class="row"><button class="danger" data-act="delround" data-id="${esc(r.id)}">Delete round</button><button data-act="cancelc">Keep it</button></div></div>`:`<button class="wide" data-act="ask" data-c="del">Delete round</button>`;
+ return h;
+}
+
+/* ---------- play ---------- */
+function playHtml(){
+ if(playView==='start'||!draft)return startView();
+ if(playView==='sum')return summaryView();
+ return holeView();
+}
+function startView(){
+ const ix=S.status==='ready'?myIndex():null;
+ return `${header('New round')}
+ <div class="card"><label for="course">Course</label><select id="course">${Object.entries(COURSES).map(([k,c])=>`<option value="${k}">${esc(c.name)}</option>`).join('')}<option value="">Other course</option></select>
+ <div id="otherWrap" hidden><label for="cname">Course name</label><input id="cname" maxlength="60" placeholder="Where are you playing?"></div>
+ <label for="tee">Tees</label><select id="tee">${teeOpts('sr')}</select>
+ <div class="row"><div><label for="rating">Course rating</label><input id="rating" inputmode="decimal" placeholder="e.g. 71.9"></div><div><label for="slope">Slope</label><input id="slope" inputmode="numeric" placeholder="e.g. 133"></div></div>
+ <label for="rdate">Date played</label><input type="date" id="rdate" value="${today()}" max="${today()}">
+ <label>Holes</label><div class="seg" id="nseg">${[['18','18'],['front','Front 9'],['back','Back 9']].map(([v,l])=>`<button aria-pressed="${S.nsel===v}" data-n="${v}">${l}</button>`).join('')}</div>
+ <p class="hint" id="chline"></p>
+ <button class="primary wide" style="margin-top:14px" data-act="start">Start round</button></div>
+ <p class="sub">Rating and slope are on the scorecard. Without them the round still posts but won’t count toward a handicap.${ix!=null?'':' Your index appears after 3 rated rounds.'}</p>`;
+}
+function syncStart(fresh){
+ const c=$('#course');if(!c)return;
+ const k=c.value;$('#otherWrap').hidden=!!k;
+ if(!fresh){const t=$('#tee'),keepTee=t.value;t.innerHTML=k?teeOpts(k):'<option value="">n/a</option>';t.disabled=!k;if(k&&COURSES[k].tees[keepTee])t.value=keepTee}
+ if(fresh&&k){const rs=teeRS(k,$('#tee').value);$('#rating').value=rs.r;$('#slope').value=rs.s}
+ updateCH();
+}
+function updateCH(){
+ const el=$('#chline');if(!el)return;
+ const ix=S.status==='ready'?myIndex():null,k=$('#course').value,n=S.nsel;
+ const rating=+$('#rating').value,slope=+$('#slope').value;
+ let par=n==='18'?72:36;
+ if(k){const p=COURSES[k].par;par=(n==='front'?p.slice(0,9):n==='back'?p.slice(9):p).reduce((a,b)=>a+b,0)}
+ const ch=courseHcp(ix,n==='18'?18:9,rating,slope,par);
+ el.textContent=ch==null?(ix==null?'':'Enter rating and slope to see your strokes.'):`With your ${fmtIdx(ix)} index you get ${ch} stroke${ch===1?'':'s'} from these tees.`;
+}
+function holeView(){
+ const h=draft.holes[hidx],f=fails(h),p=played(h),start=draft.nine==='back'?10:1;
+ let s=`${header(draft.course,'Hole '+(start+hidx)+' of '+(start+draft.holes.length-1))}
+ <div class="strip" style="grid-template-columns:repeat(${Math.min(9,draft.holes.length)},1fr)">`;
+ draft.holes.forEach((x,i)=>s+=`<button data-go="${i}" class="${i===hidx?'cur ':''}${fails(x).length?'bad':played(x)?'done':''}" aria-label="Hole ${start+i}">${start+i}</button>`);
+ s+=`</div><div class="card"><div class="hole-head"><b>Hole ${start+hidx}</b><span class="sub" style="margin:0">${p?rel(h.score-h.par)+' to par':'not scored'}</span></div>
+ ${h.yds?`<p class="sub" style="margin:4px 0 0">${h.yds} yds from the ${esc(draft.tee)} tees · stroke index ${h.si}</p>`:''}<label>Par</label><div class="seg">${[3,4,5].map(n=>`<button data-par="${n}" aria-pressed="${h.par===n}">${n}</button>`).join('')}</div>
+ <label>Strokes</label><div class="stepper"><button data-sc="-1" aria-label="Fewer strokes">−</button><output>${p?h.score:'–'}</output><button data-sc="1" aria-label="More strokes">+</button></div>
+ <label>Putts</label><div class="stepper"><button data-pt="-1" aria-label="Fewer putts">−</button><output>${h.putts}</output><button data-pt="1" aria-label="More putts">+</button></div>
+ <button class="toggle" data-tg="sc" aria-pressed="${h.sc}"><span>Approach with a scoring club (wedge or short iron)</span><b>${h.sc?'Yes':'No'}</b></button>
+ <button class="toggle" data-tg="ud" aria-pressed="${h.ud}"><span>Missed an easy up-and-down</span><b>${h.ud?'Yes':'No'}</b></button>
+ <div class="chips">${p?(f.length?f.map(r=>`<span class="chip">${r.k==='r3'?'You Suck':'Nice Work Idiot'} - ${r.n.replace('No ','')}</span>`).join(''):'<span class="chip ok">Clean hole</span>'):''}</div></div>
+ <div class="row"><button data-act="prev" ${hidx===0?'disabled':''}>Previous</button><button class="primary" data-act="next">${hidx===draft.holes.length-1?'Finish round':'Next hole'}</button></div>
+ <p style="text-align:center"><button class="link" data-act="tosum">Review round</button></p>`;
+ return s;
+}
+function summaryView(){
+ const ix=S.status==='ready'?myIndex():null,t=calc(draft,ix);
+ let s=`${header('Round summary',draft.course+' · '+fmtDate(draft.date))}
+ <div class="card big"><div><b>${t.score}</b><span>Strokes (${rel(t.score-t.parPlayed)})</span></div><div><b>${t.net!=null?t.net:'—'}</b><span>Net${t.ch!=null?' (CH '+t.ch+')':''}</span></div><div><b>${t.putts}</b><span>Putts</span></div><div><b>${t.t5}</b><span>Tiger 5 misses</span></div></div>
+ <div class="card"><table>`;
+ RULES.forEach(r=>{const c=t.per[r.k];s+=`<tr><td>${r.n}<div class="bar"><i style="width:${t.holesPlayed?Math.min(100,c/t.holesPlayed*300):0}%"></i></div></td><td class="n">${c}</td></tr>`});
+ s+=`</table></div>
+ <div class="card"><b>Handicap</b><p class="hint" style="margin-top:4px">${t.diff!=null?`Score differential <b>${fmtDiff(t.diff)}</b> (adjusted gross ${t.ags}). It counts toward your index once posted.`:!t.complete?`You’ve scored ${t.holesPlayed} of ${t.n} holes. Unfinished rounds post, but don’t count toward a handicap.`:'No course rating and slope, so this round won’t count toward a handicap.'}</p></div>`;
+ s+=S.status==='ready'?`<button class="primary wide" style="margin-bottom:8px" data-act="post" ${S.busy?'disabled':''}>${S.busy?'Posting…':'Post round'}</button>`:`<div class="card note"><p style="margin:0">Sign in to post this round. It stays saved on this phone until you do.</p></div>`;
+ s+=`<div class="row"><button data-act="back">Back to holes</button>${S.confirm==='discard'?`<button class="danger" data-act="discard">Yes, discard</button>`:`<button data-act="ask" data-c="discard">Discard round</button>`}</div>`;
+ return s;
+}
+
+/* ---------- actions ---------- */
+function go(view,arg){S.view=view;S.arg=arg||null;S.confirm=null;S.editName=false;render()}
+async function postRound(){
+ if(!draft||S.busy)return;
+ const ix=myIndex(),t=calc(draft,ix),row=JSON.parse(JSON.stringify(toRow(draft,t,ix)));
+ LS.set(OUTKEY,[...LS.get(OUTKEY,[]).filter(r=>r.id!==row.id),row]);
+ (S.rounds[S.me]=S.rounds[S.me]||[]).unshift(fromRow({...row,created_at:new Date().toISOString(),_pending:true}));
+ draft=null;saveDraft();playView='start';cacheSave();
+ go('feed');
+ if(!navigator.onLine)return toast('Saved. It posts when you have signal.');
+ await flushOutbox();
+}
+async function importOld(){
+ const old=oldRounds();if(!old.length||S.busy)return;
+ S.busy=true;render();
+ const ix=myIndex();
+ const rows=old.map(r=>{
+  const key=Object.keys(COURSES).find(k=>COURSES[k].name===r.course);
+  const rs=key?teeRS(key,r.tee):{r:'',s:''};
+  const d=new Date(r.date);
+  const holes=(r.holes||[]).map((h,i)=>({par:h.par,score:h.score,putts:h.putts,sc:!!h.sc,ud:!!h.ud,si:h.si||(key?COURSES[key].si[i]:i+1),yds:h.yds||null}));
+  const base={id:newId(),course:r.course||'My round',tee:r.tee||'',rating:rs.r,slope:rs.s,date:isNaN(d)?today():isoDate(d),nine:null,holes};
+  return JSON.parse(JSON.stringify(toRow(base,calc(base,ix),ix,{imported:true})));
+ });
+ const {error}=await sb.from('rounds').insert(rows);
+ S.busy=false;
+ if(error)return fail(error,'Those rounds didn’t post.'),render();
+ LS.set(IMPKEY,1);toast(rows.length+' round'+(rows.length>1?'s':'')+' posted');loadAll();
+}
+async function addFriend(id){
+ if(incoming().includes(id))return accept(id);
+ if(isFriend(id)||outgoing().includes(id))return toast('Already connected with '+handle(id));
+ const {error}=await sb.from('friendships').insert({requester:S.me,addressee:id});
+ if(error)return fail(error,'Request didn’t send.');
+ toast('Request sent');loadAll();
+}
+async function accept(id){
+ const {error}=await sb.from('friendships').update({status:'accepted'}).eq('requester',id).eq('addressee',S.me);
+ if(error)return fail(error,'Couldn’t accept.');
+ toast('You’re now friends with '+handle(id));loadAll();
+}
+async function unfriend(id){
+ S.confirm=null;
+ const {error}=await sb.from('friendships').delete().or(`and(requester.eq.${S.me},addressee.eq.${id}),and(requester.eq.${id},addressee.eq.${S.me})`);
+ if(error)return fail(error,'Couldn’t update that friendship.');
+ loadAll();
+}
+async function shareInvite(){
+ const url=inviteUrl(),text=`Add me on Tiger 5 so we can see each other's golf scores. My code is ${me().friend_code}.`;
+ if(navigator.share){try{await navigator.share({title:'Tiger 5',text,url});return}catch(e){if(e&&e.name==='AbortError')return}}
+ try{await navigator.clipboard.writeText(text+' '+url);toast('Invite link copied')}catch(e){toast('Your invite link: '+url)}
+}
+
+document.addEventListener('click',async e=>{
+ const b=e.target.closest('button');if(!b)return;
+ const d=b.dataset,a=d.act;
+ if(d.nav){if(d.nav==='me')return go('player',S.me);if(d.nav==='play'&&draft&&playView==='start')playView='hole';return go(d.nav)}
+ if(d.round)return go('round',d.round);
+ if(d.player)return go('player',d.player);
+ if(b.parentElement&&b.parentElement.id==='nseg'){S.nsel=d.n;[...b.parentElement.children].forEach(x=>x.setAttribute('aria-pressed',x===b));return updateCH()}
+
+ if(a==='authmode'){S.authEmail=$('#email').value.trim();S.authStep=d.m;return render()}
+ if(a==='signin'||a==='signup'){
+  const email=$('#email').value.trim(),password=$('#pw').value;
+  if(!/^\S+@\S+\.\S+$/.test(email))return toast('Enter your email address.');
+  if(a==='signup'){
+   if(password.length<8)return toast('Use a password with at least 8 characters.');
+   if(password!==$('#pw2').value)return toast('The two passwords don’t match.');
+  }else if(!password)return toast('Enter your password.');
+  S.authEmail=email;S.busy=true;render();
+  const {data,error}=a==='signup'?await sb.auth.signUp({email,password}):await sb.auth.signInWithPassword({email,password});
+  S.busy=false;
+  if(error){
+   const m=error.message||'';
+   if(/invalid login/i.test(m))toast('Email or password is wrong. New here? Tap Create account.');
+   else if(/already registered/i.test(m)){S.authStep='signin';toast('That email already has an account. Sign in instead.')}
+   else fail(error,a==='signup'?'Couldn’t create your account.':'Couldn’t sign in.');
+   return render();
+  }
+  if(!data.session){toast('Account created, but email confirmation is on in Supabase. Turn off “Confirm email”, then sign in.');S.authStep='signin';return render()}
+  S.me=data.user.id;S.status='loading';render();return loadAll();
+ }
+ if(a==='join'){
+  const v=$('#handle').value.trim();if(!v)return toast('Pick a name your friends will recognize.');
+  S.busy=true;render();
+  const {error}=await sb.from('profiles').insert({id:S.me,handle:v});
+  S.busy=false;if(error){fail(error,'Couldn’t save your name.');return render()}
+  S.status='loading';return loadAll();
+ }
+ if(a==='signout'){await sb.auth.signOut();LS.set(CACHEKEY,null);location.reload();return}
+ if(a==='editname'){S.editName=true;return render()}
+ if(a==='cancelname'){S.editName=false;return render()}
+ if(a==='savename'){
+  const v=$('#newname').value.trim();if(!v)return;
+  const {error}=await sb.from('profiles').update({handle:v}).eq('id',S.me);
+  if(error)return fail(error,'Name didn’t save.');
+  S.editName=false;S.profiles[S.me]={...me(),handle:v};toast('Name saved');return render();
+ }
+ if(a==='share')return shareInvite();
+ if(a==='addcode'){
+  const code=$('#fcode').value.trim().toUpperCase();if(!code)return;
+  if(code===me().friend_code)return toast('That’s your own code.');
+  const p=await findPlayer(code);if(!p)return toast('No player has that code. Check it and try again.');
+  S.profiles[p.id]={id:p.id,handle:p.handle};$('#fcode').value='';return addFriend(p.id);
+ }
+ if(a==='addinvite'){const p=S.invite;S.invite=null;S.profiles[p.id]={id:p.id,handle:p.handle};return addFriend(p.id)}
+ if(a==='dropinvite'){S.invite=null;return render()}
+ if(a==='accept')return accept(d.id);
+ if(a==='unfriend')return unfriend(d.id);
+ if(a==='ask'){S.confirm=d.c;return render()}
+ if(a==='cancelc'){S.confirm=null;return render()}
+ if(a==='delround'){
+  S.confirm=null;
+  const {error}=await sb.from('rounds').delete().eq('id',d.id);
+  if(error)return fail(error,'Couldn’t delete the round.');
+  toast('Round deleted');go('feed');return loadAll();
+ }
+ if(a==='import')return importOld();
+ if(a==='start'){
+  const k=$('#course').value,c=COURSES[k],n=S.nsel,tee=$('#tee').value;
+  const off=n==='back'?9:0,len=n==='18'?18:9;
+  draft={id:newId(),course:c?c.name:($('#cname').value.trim()||'My round'),tee:c?tee:'',rating:$('#rating').value.trim(),slope:$('#slope').value.trim(),date:$('#rdate').value||today(),nine:n==='18'?null:n,
+   holes:Array.from({length:len},(_,j)=>{const i=j+off;return c?{par:c.par[i],yds:c.tees[tee].yds[i],si:c.si[i],score:null,putts:2,sc:false,ud:false}:{par:4,si:i+1,score:null,putts:2,sc:false,ud:false}})};
+  hidx=0;playView='hole';saveDraft();return render();
+ }
+ if(a==='post')return postRound();
+ if(a==='discard'){draft=null;saveDraft();playView='start';S.confirm=null;return render()}
+ if(a==='back'){playView='hole';S.confirm=null;return render()}
+ if(a==='tosum'){playView='sum';return render()}
+ if(!draft)return;
+ const h=draft.holes[hidx];
+ if(d.go!=null)hidx=+d.go;
+ else if(d.par)h.par=+d.par;
+ else if(d.sc)h.score=Math.max(1,(h.score==null?h.par:h.score)+ +d.sc);
+ else if(d.pt){h.putts=Math.max(0,h.putts+ +d.pt);if(h.score==null)h.score=h.par}
+ else if(d.tg){h[d.tg]=!h[d.tg];if(h.score==null)h.score=h.par}
+ else if(a==='prev')hidx--;
+ else if(a==='next'){if(h.score==null)h.score=h.par;if(hidx===draft.holes.length-1)playView='sum';else hidx++}
+ else return;
+ saveDraft();render();
+});
+document.addEventListener('change',e=>{
+ const id=e.target.id;
+ if(id==='course'){const v=e.target.value,t=$('#tee');t.innerHTML=v?teeOpts(v):'<option value="">n/a</option>';t.disabled=!v;$('#otherWrap').hidden=!!v;const rs=v?teeRS(v,t.value):{r:'',s:''};$('#rating').value=rs.r;$('#slope').value=rs.s;updateCH()}
+ if(id==='tee'){const rs=teeRS($('#course').value,e.target.value);$('#rating').value=rs.r;$('#slope').value=rs.s;updateCH()}
+});
+document.addEventListener('input',e=>{if(e.target.id==='rating'||e.target.id==='slope')updateCH()});
+document.addEventListener('keydown',e=>{
+ if(e.key!=='Enter')return;
+ const auth=S.authStep==='signup'?'signup':'signin';
+ const map={email:auth,pw:auth,pw2:auth,handle:'join',fcode:'addcode',newname:'savename'};
+ const act=map[e.target.id];if(act){e.preventDefault();const b=document.querySelector(`[data-act="${act}"]`);if(b)b.click()}
+});
+
+/* ---------- start up ---------- */
+window.addEventListener('online',()=>{if(S.status==='ready'){flushOutbox();if(S.offline)loadAll()}});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&S.status==='ready'&&!S.busy)loadAll()});
+if('serviceWorker' in navigator&&location.protocol==='https:')navigator.serviceWorker.register('sw.js').catch(()=>{});
+
+(async()=>{
+ captureInvite();
+ render();
+ if(!sb){S.status='error';return render()}
+ sb.auth.onAuthStateChange((ev)=>{if(ev==='SIGNED_OUT'){S.me=null;S.status='auth';render()}});
+ const {data:{session}}=await sb.auth.getSession();
+ if(!session){S.status='auth';return render()}
+ S.me=session.user.id;
+ if(cacheLoad()){S.status='ready';addPendingLocal();render()}
+ loadAll();
+})();
