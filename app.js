@@ -79,7 +79,8 @@ function courseHcp(index,n,rating,slope,par){
 function calc(r,index){
  const hs=r.holes,n=hs.length,ph=hs.filter(played);
  const par=hs.reduce((a,h)=>a+h.par,0),score=ph.reduce((a,h)=>a+h.score,0),parPlayed=ph.reduce((a,h)=>a+h.par,0);
- const putts=ph.reduce((a,h)=>a+(h.putts||0),0);
+ // Putts are optional: a round only has a putts total when every scored hole has putts entered.
+ const putts=ph.length&&ph.every(h=>h.putts!=null)?ph.reduce((a,h)=>a+h.putts,0):null;
  const per={};RULES.forEach(x=>per[x.k]=ph.filter(h=>x.t(h)).length);
  const t5=Object.values(per).reduce((a,b)=>a+b,0);
  const rating=+r.rating,slope=+r.slope;
@@ -452,7 +453,7 @@ function roundView(key){
   return `<div class="scroll" style="margin-bottom:8px"><table class="sc"><tr><th>Hole</th>${sl.map((_,i)=>`<th>${start+from+i}</th>`).join('')}<th>Tot</th></tr>
   <tr><td>Par</td>${sl.map(h=>`<td>${h.par}</td>`).join('')}<td>${sum(h=>h.par)}</td></tr>
   <tr><td>Score</td>${sl.map(h=>`<td class="${fails(h).length?'miss':played(h)&&h.score<h.par?'u':''}">${played(h)?h.score:'–'}</td>`).join('')}<td><b>${sum(h=>h.score)}</b></td></tr>
-  <tr><td>Putts</td>${sl.map(h=>`<td>${played(h)?h.putts:'–'}</td>`).join('')}<td>${sum(h=>played(h)?h.putts:0)}</td></tr></table></div>`};
+  <tr><td>Putts</td>${sl.map(h=>`<td>${played(h)&&h.putts!=null?h.putts:'–'}</td>`).join('')}<td>${sl.some(h=>played(h)&&h.putts!=null)?sum(h=>played(h)?h.putts:0):'–'}</td></tr></table></div>`};
  h+=`<div class="card">${rows(0,9)}${rows(9,18)}<p class="hint" style="margin:0">Red holes broke a Tiger 5 rule. Green holes were under par.</p></div>`;
  h+=`<h2>Tiger 5</h2><div class="card"><table>`;
  RULES.forEach(q=>{const c=(r.per&&r.per[q.k])||0;h+=`<tr><td>${q.n}<div class="bar"><i style="width:${r.holesPlayed?Math.min(100,c/r.holesPlayed*300):0}%"></i></div></td><td class="n">${c}</td></tr>`});
@@ -486,6 +487,8 @@ function betStandings(t,bet){
   let rs=tripRounds(t,uid);
   if(k.single){const f=rs.filter(r=>r.n===18);return{uid,n:f.length,v:f.length?Math.min(...f.map(r=>r.score)):null}}
   if(bet.kind==='net')rs=rs.filter(r=>r.net!=null);
+  // Rounds without putts on every hole can't count toward putting bets.
+  if(bet.kind==='putts'||bet.kind==='three_putts')rs=rs.filter(r=>(r.holes||[]).filter(played).every(h=>h.putts!=null));
   if(!rs.length)return{uid,n:0,v:null};
   const sum=rs.reduce((a,r)=>a+(k.val(r)||0),0),holes=rs.reduce((a,r)=>a+r.n,0);
   return{uid,n:rs.length,v:bet.scoring==='avg'?Math.round(sum/holes*18*10)/10:sum};
@@ -591,7 +594,7 @@ function tripView(id){
    const s=betStandings(t,b);
    h+=`<p class="hint" style="margin:4px 0 0">${k.single?'Lowest 18-hole score in a single round':b.scoring==='avg'?'Average per 18 holes':'Total across all trip rounds'}</p>`;
    if(!s.ranked.length)h+=`<p class="hint">No finished trip rounds yet.</p>`;
-   else h+=`<table style="margin-top:6px"><tbody>${s.ranked.map(r=>`<tr class="${s.leaders.includes(r.uid)?'lead':''}"><td>${esc(who(r.uid))}</td><td class="n" style="font-weight:400;color:var(--mute)">${r.n} rd${r.n===1?'':'s'}</td><td class="n">${r.v}</td></tr>`).join('')}${s.none.map(r=>`<tr><td style="color:var(--mute)">${esc(who(r.uid))}</td><td></td><td class="n" style="font-weight:400;color:var(--mute)">${b.kind==='net'?'no index':'—'}</td></tr>`).join('')}</tbody></table>`;
+   else h+=`<table style="margin-top:6px"><tbody>${s.ranked.map(r=>`<tr class="${s.leaders.includes(r.uid)?'lead':''}"><td>${esc(who(r.uid))}</td><td class="n" style="font-weight:400;color:var(--mute)">${r.n} rd${r.n===1?'':'s'}</td><td class="n">${r.v}</td></tr>`).join('')}${s.none.map(r=>`<tr><td style="color:var(--mute)">${esc(who(r.uid))}</td><td></td><td class="n" style="font-weight:400;color:var(--mute)">${b.kind==='net'?'no index':(b.kind==='putts'||b.kind==='three_putts')&&tripRounds(t,r.uid).length?'no putts':'—'}</td></tr>`).join('')}</tbody></table>`;
    if(s.uneven)h+=`<p class="hint">Players have played different numbers of rounds, so totals aren’t a fair comparison yet.</p>`;
    if(s.leaders.length)h+=`<p class="hint">${st==='done'?'Won by':'Leading:'} <b>${esc(s.leaders.map(who).join(' & '))}</b>${s.leaders.length>1&&stake?' (pot split)':''}</p>`;
   }
@@ -881,10 +884,10 @@ function holeView(){
  let s=`${header(draft.course,'Hole '+(start+hidx)+' of '+(start+draft.holes.length-1))}
  <div class="strip" style="grid-template-columns:repeat(${Math.min(9,draft.holes.length)},1fr)">`;
  draft.holes.forEach((x,i)=>s+=`<button data-go="${i}" class="${i===hidx?'cur ':''}${fails(x).length?'bad':played(x)?'done':''}" aria-label="Hole ${start+i}">${start+i}</button>`);
- s+=`</div><div class="card"><div class="hole-head"><b>Hole ${start+hidx}</b><span class="sub" style="margin:0">${p?rel(h.score-h.par)+' to par':'not scored'}</span></div>
+ s+=`</div><div class="card"><div class="hole-head"><b>Hole ${start+hidx}</b><span class="sub" style="margin:0">${rel((p?h.score:h.par)-h.par)} to par</span></div>
  ${h.yds?`<p class="sub" style="margin:4px 0 0">${h.yds} yds from the ${esc(draft.tee)} tees · stroke index ${h.si}</p>`:''}<label>Par</label><div class="seg">${[3,4,5].map(n=>`<button data-par="${n}" aria-pressed="${h.par===n}">${n}</button>`).join('')}</div>
- <label>Strokes</label><div class="stepper"><button data-sc="-1" aria-label="Fewer strokes">−</button><output>${p?h.score:'–'}</output><button data-sc="1" aria-label="More strokes">+</button></div>
- <label>Putts</label><div class="stepper"><button data-pt="-1" aria-label="Fewer putts">−</button><output>${h.putts}</output><button data-pt="1" aria-label="More putts">+</button></div>
+ <label>Strokes</label><div class="stepper"><button data-sc="-1" aria-label="Fewer strokes">−</button><output>${p?h.score:h.par}</output><button data-sc="1" aria-label="More strokes">+</button></div>
+ <label>Putts${h.putts==null?` <span class="${S.puttsNag?'neg':'hint'}" style="font-weight:400;font-size:14px">(required to continue)</span>`:''}</label><div class="stepper${S.puttsNag&&h.putts==null?' need':''}"><button data-pt="-1" aria-label="Fewer putts">−</button><output>${h.putts==null?'–':h.putts}</output><button data-pt="1" aria-label="More putts">+</button></div>
  <button class="toggle" data-tg="sc" aria-pressed="${h.sc}"><span>Approach with a scoring club (wedge or short iron)</span><b>${h.sc?'Yes':'No'}</b></button>
  <button class="toggle" data-tg="ud" aria-pressed="${h.ud}"><span>Missed an easy up-and-down</span><b>${h.ud?'Yes':'No'}</b></button>
  <div class="chips">${p?(f.length?f.map(r=>`<span class="chip">${r.k==='r3'?'You Suck':'Nice Work Idiot'} - ${r.n.replace('No ','')}</span>`).join(''):'<span class="chip ok">Clean hole</span>'):''}</div></div>
@@ -895,7 +898,7 @@ function holeView(){
 function summaryView(){
  const ix=S.status==='ready'?myIndex():null,t=calc(draft,ix);
  let s=`${header('Round summary',draft.course+' · '+fmtDate(draft.date))}
- <div class="card big"><div><b>${t.score}</b><span>Strokes (${rel(t.score-t.parPlayed)})</span></div><div><b>${t.net!=null?t.net:'—'}</b><span>Net${t.ch!=null?' (CH '+t.ch+')':''}</span></div><div><b>${t.putts}</b><span>Putts</span></div><div><b>${t.t5}</b><span>Tiger 5 misses</span></div></div>
+ <div class="card big"><div><b>${t.score}</b><span>Strokes (${rel(t.score-t.parPlayed)})</span></div><div><b>${t.net!=null?t.net:'—'}</b><span>Net${t.ch!=null?' (CH '+t.ch+')':''}</span></div><div><b>${t.putts==null?'—':t.putts}</b><span>Putts</span></div><div><b>${t.t5}</b><span>Tiger 5 misses</span></div></div>
  <div class="card"><table>`;
  RULES.forEach(r=>{const c=t.per[r.k];s+=`<tr><td>${r.n}<div class="bar"><i style="width:${t.holesPlayed?Math.min(100,c/t.holesPlayed*300):0}%"></i></div></td><td class="n">${c}</td></tr>`});
  s+=`</table></div>
@@ -1065,7 +1068,7 @@ document.addEventListener('click',async e=>{
   const k=$('#course').value,c=COURSES[k],n=S.nsel,tee=$('#tee').value;
   const off=n==='back'?9:0,len=n==='18'?18:9;
   draft={id:newId(),course:c?c.name:($('#cname').value.trim()||'My round'),tee:c?tee:'',rating:$('#rating').value.trim(),slope:$('#slope').value.trim(),date:$('#rdate').value||today(),nine:n==='18'?null:n,
-   holes:Array.from({length:len},(_,j)=>{const i=j+off;return c?{par:c.par[i],yds:c.tees[tee].yds[i],si:c.si[i],score:null,putts:2,sc:false,ud:false}:{par:4,si:i+1,score:null,putts:2,sc:false,ud:false}})};
+   holes:Array.from({length:len},(_,j)=>{const i=j+off;return c?{par:c.par[i],yds:c.tees[tee].yds[i],si:c.si[i],score:null,putts:null,sc:false,ud:false}:{par:4,si:i+1,score:null,putts:null,sc:false,ud:false}})};
   hidx=0;playView='hole';saveDraft();return render();
  }
  if(a==='post')return postRound();
@@ -1074,13 +1077,15 @@ document.addEventListener('click',async e=>{
  if(a==='tosum'){playView='sum';return render()}
  if(!draft)return;
  const h=draft.holes[hidx];
- if(d.go!=null)hidx=+d.go;
+ // Putts are required before moving ahead (going back to earlier holes is fine).
+ const needPutts=()=>{if(h.putts!=null)return false;S.puttsNag=true;render();toast('Enter putts for this hole first.');return true};
+ if(d.go!=null){if(+d.go>hidx&&needPutts())return;S.puttsNag=false;hidx=+d.go}
  else if(d.par)h.par=+d.par;
  else if(d.sc)h.score=Math.max(1,(h.score==null?h.par:h.score)+ +d.sc);
- else if(d.pt){h.putts=Math.max(0,h.putts+ +d.pt);if(h.score==null)h.score=h.par}
+ else if(d.pt){h.putts=h.putts==null?(+d.pt>0?1:0):Math.max(0,h.putts+ +d.pt);if(h.score==null)h.score=h.par}
  else if(d.tg){h[d.tg]=!h[d.tg];if(h.score==null)h.score=h.par}
- else if(a==='prev')hidx--;
- else if(a==='next'){if(h.score==null)h.score=h.par;if(hidx===draft.holes.length-1)playView='sum';else hidx++}
+ else if(a==='prev'){S.puttsNag=false;hidx--}
+ else if(a==='next'){if(needPutts())return;S.puttsNag=false;if(h.score==null)h.score=h.par;if(hidx===draft.holes.length-1)playView='sum';else hidx++}
  else return;
  saveDraft();render();
 });
