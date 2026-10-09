@@ -320,16 +320,18 @@ function feedView(){
  return h;
 }
 
+// The friend button for any other player: Add, Accept, Requested or Friends.
+function friendAction(id,addLabel){
+ if(id===S.me)return '';
+ if(isFriend(id))return `<span class="tag">Friends</span>`;
+ if(outgoing().includes(id))return `<span class="tag gold">Requested</span>`;
+ if(incoming().includes(id))return `<button class="primary" data-act="accept" data-id="${esc(id)}">Accept</button>`;
+ return `<button class="primary" data-act="add" data-id="${esc(id)}">${addLabel||'Add'}</button>`;
+}
 function searchResults(){
  const r=S.searchResults;if(!r)return '';
  if(!r.length)return `<p class="hint">No players found. Names need at least 3 letters; emails must be the full address. If they haven’t joined yet, send them your invite link.</p>`;
- const inc=incoming(),out=outgoing();
- return r.map(p=>{
-  const action=isFriend(p.id)?`<span class="tag">Friends</span>`:out.includes(p.id)?`<span class="tag gold">Requested</span>`
-   :inc.includes(p.id)?`<button class="primary" data-act="accept" data-id="${esc(p.id)}">Accept</button>`
-   :`<button class="primary" data-act="add" data-id="${esc(p.id)}">Add</button>`;
-  return `<div class="item" style="padding:8px 0;border-top:1px solid var(--line)">${av(p.id)}<div class="mid"><b>${esc(p.handle)}</b></div>${action}</div>`;
- }).join('');
+ return r.map(p=>`<div class="item" style="padding:8px 0;border-top:1px solid var(--line)">${av(p.id)}<div class="mid"><b>${esc(p.handle)}</b></div>${friendAction(p.id)}</div>`).join('');
 }
 async function searchPlayers(){
  const q=$('#fsearch').value.trim();
@@ -375,7 +377,7 @@ function diffChart(x){
 }
 function playerView(id){
  const mineView=id===S.me;
- if(!mineView&&!isFriend(id))return header('Player')+`<div class="card empty"><b>Scores are shared between friends</b>Add ${esc(handle(id))} as a friend to see their rounds.</div>`;
+ if(!mineView&&!isFriend(id))return header(handle(id),'Player')+`<div class="card empty"><b>Scores are shared between friends</b>Add ${esc(handle(id))} as a friend to see all their rounds.<div style="margin-top:14px">${friendAction(id,'Add friend')}</div></div>`;
  const rounds=S.rounds[id]||[],x=hcp(rounds);
  let h=header(mineView?'Your card':handle(id),mineView?'Tiger 5':'Friend');
  if(mineView){
@@ -550,7 +552,8 @@ function tripView(id){
  h+=`<h2>Trip rounds</h2>`+(rs.length?rs.map(r=>roundItem(r)).join(''):`<div class="card empty"><b>No rounds yet</b>Finished rounds posted ${fmtRange(t)} show up here.</div>`);
 
  h+=`<h2>Players</h2><div class="card">`;
- h+=mem.map(u=>`<div class="item" style="padding:4px 0"><div class="mid"><b>${esc(who(u))}${u===t.created_by?' <span class="tag">Organizer</span>':''}</b></div>${owner&&u!==S.me?`<button class="link" data-act="rmmember" data-u="${esc(u)}">Remove</button>`:''}</div>`).join('');
+ h+=mem.map(u=>`<div class="item" style="padding:6px 0">${av(u)}<div class="mid"><b>${esc(who(u))}</b>${u===t.created_by?'<span>Organizer</span>':''}</div>${friendAction(u,'Add friend')}${owner&&u!==S.me?`<button class="link" data-act="rmmember" data-u="${esc(u)}">Remove</button>`:''}</div>`).join('');
+ if(mem.some(u=>u!==S.me&&!isFriend(u)))h+=`<p class="hint">Friends see each other’s rounds all year, not just on this trip.</p>`;
  {
   // Anyone on the trip can add their own friends; only the organizer removes others.
   const add=friendIds().filter(f=>!mem.includes(f)),waiting=outgoing();
