@@ -10,7 +10,7 @@ Golf scoring for you and your friends: Tiger 5 mistake tracking, a World Handica
 | `app.js` | All app logic: scoring, handicap math, friends, sync |
 | `config.js` | Your Supabase project URL and anon key |
 | `supabase/schema.sql` | Database tables and security rules; run once in Supabase |
-| `supabase/trips.sql`, `supabase/board.sql` | Trips and side bets; the Betting Board (run after schema.sql) |
+| `supabase/trips.sql`, `supabase/expenses.sql`, `supabase/board.sql` | Trips and side bets; trip receipts; the Betting Board (run in that order after schema.sql) |
 | `manifest.webmanifest`, `sw.js`, `icons/` | Make it installable and usable offline |
 
 ## One-time setup
@@ -41,6 +41,13 @@ A trip has dates and players (anyone on the trip can add their friends). Any pla
 Each player puts the stake into each bet's pot and the winners split it. **Settle up** shows each player's net and the fewest payments to square everyone up. The app only keeps track; it never moves money.
 
 Trip-mates who aren't friends can see each other's names and the rounds they posted during the trip, nothing else.
+
+### Receipts
+`supabase/expenses.sql` adds trip expenses and a private `receipts` storage bucket (already applied to the live database).
+
+On a trip, anyone can add a receipt: what it was for, the total, who paid, who it's split between (everyone by default), and an optional photo or PDF. Photos are shrunk to 1600px JPEGs before upload. Only people on that trip can see its receipts. The person who added a receipt, the person who paid, or the organizer can delete it.
+
+**Settle up** combines bets and receipts: each player's receipt balance is what they paid minus their share, and the payments list squares everything with the fewest transfers.
 
 ## Betting Board
 `supabase/board.sql` turns on the **Board** tab (already applied to the live database).

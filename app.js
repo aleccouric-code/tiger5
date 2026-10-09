@@ -112,7 +112,7 @@ function toRow(d,t,index,extra){
 
 /* ---------- state ---------- */
 const DKEY='tiger5-draft-v2',OLDKEY='tiger5-rounds-v1',IMPKEY='tiger5-imported-v1',OUTKEY='tiger5-outbox',CACHEKEY='tiger5-cache',INVKEY='tiger5-invite';
-const S={status:'loading',me:null,email:'',profiles:{},friendships:[],rounds:{},view:'feed',arg:null,busy:false,confirm:null,editName:false,nsel:'18',authStep:'signin',authEmail:'',offline:false,invite:null,trips:[],tripMembers:{},bets:{},tripsOk:true,tripSel:[],betKind:'putts',betScoring:'total',board:[],boardPicks:{},boardOk:true,bbOpts:2,settling:null};
+const S={status:'loading',me:null,email:'',profiles:{},friendships:[],rounds:{},view:'feed',arg:null,busy:false,confirm:null,editName:false,nsel:'18',authStep:'signin',authEmail:'',offline:false,invite:null,trips:[],tripMembers:{},bets:{},tripsOk:true,tripSel:[],betKind:'putts',betScoring:'total',board:[],boardPicks:{},boardOk:true,bbOpts:2,settling:null,expenses:{},exSplit:null,exPaidBy:null,receiptView:null};
 let draft=LS.get(DKEY,null),hidx=0,playView=draft&&draft.holes?'hole':'start',lastKey='';
 if(draft&&!draft.holes)draft=null;
 const saveDraft=()=>LS.set(DKEY,draft);
@@ -133,8 +133,8 @@ const isNetErr=(e)=>!navigator.onLine||(e&&(e instanceof TypeError||/fetch|netwo
 function fail(e,what){console.error(e);toast(isNetErr(e)?'You’re offline. Try again when you have signal.':(what||'That didn’t save.')+' '+(e&&e.message?e.message:''))}
 
 /* ---------- loading ---------- */
-function cacheSave(){LS.set(CACHEKEY,{me:S.me,profiles:S.profiles,friendships:S.friendships,rounds:S.rounds,trips:S.trips,tripMembers:S.tripMembers,bets:S.bets,board:S.board,boardPicks:S.boardPicks})}
-function cacheLoad(){const c=LS.get(CACHEKEY,null);if(!c||c.me!==S.me)return false;S.profiles=c.profiles||{};S.friendships=c.friendships||[];S.rounds=c.rounds||{};S.trips=c.trips||[];S.tripMembers=c.tripMembers||{};S.bets=c.bets||{};S.board=c.board||[];S.boardPicks=c.boardPicks||{};return true}
+function cacheSave(){LS.set(CACHEKEY,{me:S.me,profiles:S.profiles,friendships:S.friendships,rounds:S.rounds,trips:S.trips,tripMembers:S.tripMembers,bets:S.bets,board:S.board,boardPicks:S.boardPicks,expenses:S.expenses})}
+function cacheLoad(){const c=LS.get(CACHEKEY,null);if(!c||c.me!==S.me)return false;S.profiles=c.profiles||{};S.friendships=c.friendships||[];S.rounds=c.rounds||{};S.trips=c.trips||[];S.tripMembers=c.tripMembers||{};S.bets=c.bets||{};S.board=c.board||[];S.boardPicks=c.boardPicks||{};S.expenses=c.expenses||{};return true}
 
 async function loadAll(){
  try{
@@ -175,11 +175,15 @@ async function loadTrips(profiles,friendsAndMe){
  try{
   const {data:tm,error:e1}=await sb.from('trip_members').select('trip_id,user_id');if(e1)throw e1;
   const tripIds=[...new Set((tm||[]).map(x=>x.trip_id))];
-  let trips=[],bets=[];
+  let trips=[],bets=[],expenses=[];
   if(tripIds.length){
    const a=await sb.from('trips').select('*').in('id',tripIds);if(a.error)throw a.error;trips=a.data||[];
    const b=await sb.from('bets').select('*').in('trip_id',tripIds).order('created_at');if(b.error)throw b.error;bets=b.data||[];
+   const x=await sb.from('expenses').select('*').in('trip_id',tripIds).order('created_at',{ascending:false});
+   if(x.error)console.error(x.error);else expenses=x.data||[];
   }
+  const exBy={};expenses.forEach(e=>(exBy[e.trip_id]=exBy[e.trip_id]||[]).push({...e,amount:+e.amount}));
+  S.expenses=exBy;
   const members={};(tm||[]).forEach(x=>(members[x.trip_id]=members[x.trip_id]||[]).push(x.user_id));
   const betsBy={};bets.forEach(b=>(betsBy[b.trip_id]=betsBy[b.trip_id]||[]).push(b));
   S.trips=trips.sort((x,y)=>y.start_date.localeCompare(x.start_date));S.tripMembers=members;S.bets=betsBy;S.tripsOk=true;
@@ -254,7 +258,7 @@ const inviteUrl=()=>location.origin+location.pathname+'#invite-'+(me().friend_co
 function render(){
  const key=S.status+'|'+S.view+'|'+S.arg+'|'+playView+'|'+S.authStep;
  const keep={};
- if(key===lastKey)document.querySelectorAll('#app input,#app select').forEach(e=>{if(e.id)keep[e.id]=e.value});
+ if(key===lastKey)document.querySelectorAll('#app input:not([type=file]),#app select').forEach(e=>{if(e.id)keep[e.id]=e.value});
  const focus=document.activeElement&&document.activeElement.id;
  let html;
  if(S.status==='auth')html=authView();
@@ -486,13 +490,31 @@ function betWinners(t,bet){
 }
 // Every player puts the stake into each bet's pot; winners split the pot.
 // Returns each player's net and the fewest payments that square everyone up.
+// Splits an amount into cents as evenly as possible (the first people absorb any leftover cent).
+function splitCents(amount,people){
+ const cents=Math.round(amount*100),base=Math.floor(cents/people.length),extra=cents-base*people.length,out={};
+ people.forEach((u,i)=>out[u]=(base+(i<extra?1:0))/100);
+ return out;
+}
+// What each player spent and owes on shared expenses. Only current trip players count.
+function expenseTotals(t){
+ const mem=S.tripMembers[t.id]||[],paid={},share={};mem.forEach(u=>{paid[u]=0;share[u]=0});
+ (S.expenses[t.id]||[]).forEach(e=>{
+  const split=(e.split_among||[]).filter(u=>mem.includes(u));if(!split.length||!mem.includes(e.paid_by))return;
+  paid[e.paid_by]+=e.amount;
+  const s=splitCents(e.amount,split);for(const u in s)share[u]+=s[u];
+ });
+ return{paid,share};
+}
 function settleUp(t){
- const mem=S.tripMembers[t.id]||[],net={};mem.forEach(u=>net[u]=0);
+ const mem=S.tripMembers[t.id]||[],net={},betNet={};mem.forEach(u=>{net[u]=0;betNet[u]=0});
  (S.bets[t.id]||[]).forEach(b=>{
   const w=betWinners(t,b),stake=+b.stake||0;if(!w.length||!stake)return;
-  mem.forEach(u=>net[u]-=stake);
-  const share=stake*mem.length/w.length;w.forEach(u=>net[u]+=share);
+  mem.forEach(u=>betNet[u]-=stake);
+  const share=stake*mem.length/w.length;w.forEach(u=>betNet[u]+=share);
  });
+ const ex=expenseTotals(t),exNet={};
+ mem.forEach(u=>{exNet[u]=Math.round((ex.paid[u]-ex.share[u])*100)/100;net[u]=betNet[u]+exNet[u]});
  const cred=[],debt=[];
  for(const u in net){const v=Math.round(net[u]*100)/100;if(v>0)cred.push({u,v});else if(v<0)debt.push({u,v:-v})}
  cred.sort((a,b)=>b.v-a.v);debt.sort((a,b)=>b.v-a.v);
@@ -502,7 +524,7 @@ function settleUp(t){
   if(x>=0.01)pays.push({from:debt[i].u,to:cred[j].u,amt:Math.round(x*100)/100});
   debt[i].v-=x;cred[j].v-=x;if(debt[i].v<0.005)i++;if(cred[j].v<0.005)j++;
  }
- return{net,pays};
+ return{net,pays,betNet,exNet};
 }
 
 function tripsView(){
@@ -563,12 +585,17 @@ function tripView(id){
  <label for="bstake">Stake per player ($)</label><input id="bstake" inputmode="decimal" placeholder="0 for bragging rights">
  <button class="primary wide" style="margin-top:14px" data-act="addbet" ${S.busy?'disabled':''}>Add bet</button></div>`;
 
- if(bets.some(b=>+b.stake>0)){
-  const sv=settleUp(t);
+ h+=expensesSection(t,mem,who);
+
+ const hasMoney=bets.some(b=>+b.stake>0),hasEx=(S.expenses[t.id]||[]).length>0;
+ if(hasMoney||hasEx){
+  const sv=settleUp(t),sgn=(v)=>`<span class="${v>0?'pos':v<0?'neg':''}">${v>0?'+':v<0?'−':''}${fmtMoney(v)}</span>`;
   h+=`<h2>${st==='done'?'Settle up':'Settle up if the trip ended now'}</h2><div class="card">`;
   h+=sv.pays.length?`<table><tbody>${sv.pays.map(p=>`<tr><td>${esc(who(p.from))} pay${p.from===S.me?'':'s'} ${esc(p.to===S.me?'you':handle(p.to))}</td><td class="n">${fmtMoney(p.amt)}</td></tr>`).join('')}</tbody></table>`:`<p style="margin:0">Nobody owes anything yet.</p>`;
-  h+=`<p class="hint">Trip net: ${mem.map(u=>{const v=Math.round((sv.net[u]||0)*100)/100;return `${esc(who(u))} <span class="${v>0?'pos':v<0?'neg':''}">${v>0?'+':v<0?'−':''}${fmtMoney(v)}</span>`}).join(' · ')}</p>
-  <p class="hint">The app only keeps track. Settle up however your group pays each other.</p></div>`;
+  h+=`<h3 style="font-size:15px;margin:14px 0 2px">Where it comes from</h3><table><thead><tr><th>Player</th>${hasMoney?'<th class="n">Bets</th>':''}${hasEx?'<th class="n">Receipts</th>':''}<th class="n">Net</th></tr></thead><tbody>${mem.map(u=>{
+   const r=(v)=>Math.round((v||0)*100)/100;
+   return `<tr><td>${esc(who(u))}</td>${hasMoney?`<td class="n" style="font-weight:400">${sgn(r(sv.betNet[u]))}</td>`:''}${hasEx?`<td class="n" style="font-weight:400">${sgn(r(sv.exNet[u]))}</td>`:''}<td class="n">${sgn(r(sv.net[u]))}</td></tr>`}).join('')}</tbody></table>
+  <p class="hint">Receipts: what you paid minus your share. Payments above combine everything into the fewest transfers. The app only keeps track; settle up however your group pays each other.</p></div>`;
  }
 
  const rs=mem.flatMap(u=>tripRounds(t,u)).sort((a,b)=>b.date.localeCompare(a.date)||(b.at||0)-(a.at||0));
@@ -590,6 +617,68 @@ function tripView(id){
  return h;
 }
 
+function expensesSection(t,mem,who){
+ const list=S.expenses[t.id]||[],ex=expenseTotals(t),total=list.reduce((a,e)=>a+e.amount,0);
+ let h=`<h2>Receipts</h2>`;
+ if(list.length){
+  h+=`<div class="card"><div class="bet-head"><b>Trip spending</b><span class="money">${fmtMoney(total)}</span></div><table style="margin-top:6px"><thead><tr><th>Player</th><th class="n">Paid</th><th class="n">Their share</th></tr></thead><tbody>${mem.map(u=>`<tr><td>${esc(who(u))}</td><td class="n" style="font-weight:400">${fmtMoney(ex.paid[u]||0)}</td><td class="n">${fmtMoney(ex.share[u]||0)}</td></tr>`).join('')}</tbody></table></div>`;
+  list.forEach(e=>{
+   const split=(e.split_among||[]).filter(u=>mem.includes(u)),canDel=e.created_by===S.me||e.paid_by===S.me||t.created_by===S.me;
+   const each=split.length?fmtMoney(e.amount/split.length):'';
+   h+=`<div class="card"><div class="bet-head"><b>${esc(e.description)}</b><span class="money">${fmtMoney(e.amount)}</span></div>
+   <p class="hint" style="margin:2px 0 0">Paid by ${esc(who(e.paid_by))}${e.spent_on?' · '+fmtDate(e.spent_on):''} · ${split.length===mem.length?'split between everyone':'split between '+esc(split.map(who).join(', '))}${split.length>1?` (about ${each} each)`:''}</p>
+   <div class="row" style="margin-top:8px">${e.receipt_path?`<button data-act="viewreceipt" data-path="${esc(e.receipt_path)}">View receipt</button>`:'<span class="hint" style="margin:0">No photo</span>'}${canDel?(S.confirm==='ex:'+e.id?`<button class="danger" data-act="delexpense" data-id="${esc(e.id)}">Delete</button><button data-act="cancelc">Keep</button>`:`<button class="link" style="flex:none" data-act="ask" data-c="ex:${esc(e.id)}">Delete</button>`):''}</div></div>`;
+  });
+ }
+ const paidBy=S.exPaidBy&&mem.includes(S.exPaidBy)?S.exPaidBy:S.me,split=(S.exSplit||mem).filter(u=>mem.includes(u));
+ h+=`<div class="card"><b>Add a receipt</b>
+ <label for="exdesc">What was it for?</label><input id="exdesc" maxlength="80" placeholder="e.g. Dinner at the clubhouse">
+ <div class="row"><div><label for="examt">Total ($)</label><input id="examt" inputmode="decimal" placeholder="0.00"></div><div><label for="exdate">Date</label><input id="exdate" type="date" value="${today()}"></div></div>
+ <label>Who paid?</label><div class="pick">${mem.map(u=>`<button data-expaid="${esc(u)}" aria-pressed="${u===paidBy}">${esc(who(u))}</button>`).join('')}</div>
+ <label>Split between</label><div class="pick">${mem.map(u=>`<button data-exsplit="${esc(u)}" aria-pressed="${split.includes(u)}">${esc(who(u))}</button>`).join('')}</div>
+ <label for="exphoto">Receipt photo (optional)</label><input id="exphoto" type="file" accept="image/*,application/pdf">
+ ${S.exFile?`<p class="hint">Attached: ${esc(S.exFile.name)} · <button class="link" data-act="exnofile">Remove</button></p>`:''}
+ <button class="primary wide" style="margin-top:14px" data-act="addexpense" ${S.busy?'disabled':''}>${S.busy?'Saving…':'Add receipt'}</button></div>`;
+ if(S.receiptView)h+=`<div class="overlay" role="dialog" aria-label="Receipt"><div class="row" style="flex:none"><b style="color:#fff">Receipt</b><button data-act="closereceipt" style="flex:none">Close</button></div>${S.receiptView.pdf?`<p style="color:#fff">This receipt is a PDF.</p><a class="primary" style="display:block;text-align:center;padding:12px;border-radius:10px;background:var(--green);color:var(--on-green)" href="${esc(S.receiptView.url)}" target="_blank" rel="noopener">Open PDF</a>`:`<img src="${esc(S.receiptView.url)}" alt="Receipt photo">`}</div>`;
+ return h;
+}
+// Shrinks photos to at most 1600px (JPEG) so uploads are quick and storage stays small.
+async function prepReceipt(file){
+ if(file.type==='application/pdf'){if(file.size>5e6)throw new Error('That PDF is over 5 MB.');return{blob:file,type:'application/pdf',ext:'pdf'}}
+ try{
+  const url=URL.createObjectURL(file);
+  const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url});
+  const k=Math.min(1,1600/Math.max(img.naturalWidth,img.naturalHeight));
+  const c=document.createElement('canvas');c.width=Math.round(img.naturalWidth*k);c.height=Math.round(img.naturalHeight*k);
+  c.getContext('2d').drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(url);
+  const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',0.8));
+  if(blob)return{blob,type:'image/jpeg',ext:'jpg'};
+ }catch(e){}
+ throw new Error('That file can’t be used. Try a photo (JPEG or PNG) or a PDF.');
+}
+async function addExpense(){
+ const t=curTrip();if(!t)return;
+ const mem=S.tripMembers[t.id]||[];
+ const desc=$('#exdesc').value.trim(),raw=$('#examt').value.replace(/[$,\s]/g,''),amount=Math.round(+raw*100)/100;
+ const split=(S.exSplit||mem).filter(u=>mem.includes(u)),paid=S.exPaidBy&&mem.includes(S.exPaidBy)?S.exPaidBy:S.me;
+ if(!desc)return toast('Say what the receipt was for.');
+ if(!raw||!(amount>0)||amount>=100000)return toast('Enter the receipt total in dollars.');
+ if(!split.length)return toast('Pick at least one person to split it between.');
+ S.busy=true;render();
+ const id=newId();let path=null;
+ try{
+  if(S.exFile){
+   const up=await prepReceipt(S.exFile);path=t.id+'/'+id+'.'+up.ext;
+   const {error}=await sb.storage.from('receipts').upload(path,up.blob,{contentType:up.type,upsert:false});
+   if(error)throw error;
+  }
+  const {error}=await sb.from('expenses').insert({id,trip_id:t.id,description:desc,amount,paid_by:paid,split_among:split,spent_on:$('#exdate').value||null,receipt_path:path,created_by:S.me});
+  if(error){if(path)sb.storage.from('receipts').remove([path]);throw error}
+ }catch(e){S.busy=false;fail(e,'Couldn’t save the receipt.');return render()}
+ S.busy=false;S.exFile=null;S.exSplit=null;S.exPaidBy=null;
+ $('#exdesc').value='';$('#examt').value='';
+ toast('Receipt added');loadAll();
+}
 async function createTrip(){
  const name=$('#tname').value.trim(),start=$('#tstart').value,end=$('#tend').value;
  if(!name)return toast('Give the trip a name.');
@@ -791,7 +880,10 @@ function summaryView(){
 }
 
 /* ---------- actions ---------- */
-function go(view,arg){S.view=view;S.arg=arg||null;S.confirm=null;S.editName=false;S.settling=null;render()}
+function go(view,arg){
+ if(view!==S.view||arg!==S.arg){S.exSplit=null;S.exPaidBy=null;S.exFile=null}
+ S.view=view;S.arg=arg||null;S.confirm=null;S.editName=false;S.settling=null;S.receiptView=null;render();
+}
 async function postRound(){
  if(!draft||S.busy)return;
  const ix=myIndex(),t=calc(draft,ix),row=JSON.parse(JSON.stringify(toRow(draft,t,ix)));
@@ -853,6 +945,8 @@ document.addEventListener('click',async e=>{
  if(d.bs){S.betScoring=d.bs;return render()}
  if(d.win)return toggleWinner(d.win,d.u);
  if(d.pickbet)return pickBoard(d.pickbet,+d.opt);
+ if(d.expaid){S.exPaidBy=d.expaid;return render()}
+ if(d.exsplit){const t=curTrip(),mem=t?S.tripMembers[t.id]||[]:[];const s=new Set(S.exSplit||mem);s.has(d.exsplit)?s.delete(d.exsplit):s.add(d.exsplit);S.exSplit=mem.filter(u=>s.has(u));return render()}
  if(d.player)return go('player',d.player);
  if(b.parentElement&&b.parentElement.id==='nseg'){S.nsel=d.n;[...b.parentElement.children].forEach(x=>x.setAttribute('aria-pressed',x===b));return updateCH()}
 
@@ -909,6 +1003,20 @@ document.addEventListener('click',async e=>{
   toast('Round deleted');go('feed');return loadAll();
  }
  if(a==='import')return importOld();
+ if(a==='addexpense')return addExpense();
+ if(a==='exnofile'){S.exFile=null;return render()}
+ if(a==='viewreceipt'){
+  const {data,error}=await sb.storage.from('receipts').createSignedUrl(d.path,600);
+  if(error)return fail(error,'Couldn’t open the receipt.');
+  S.receiptView={url:data.signedUrl,pdf:/\.pdf$/i.test(d.path)};return render();
+ }
+ if(a==='closereceipt'){S.receiptView=null;return render()}
+ if(a==='delexpense'){
+  S.confirm=null;const e=Object.values(S.expenses).flat().find(x=>x.id===d.id);
+  const {error}=await sb.from('expenses').delete().eq('id',d.id);if(error)return fail(error,'Couldn’t delete the receipt.');
+  if(e&&e.receipt_path)sb.storage.from('receipts').remove([e.receipt_path]).catch(()=>{});
+  toast('Receipt deleted');return loadAll();
+ }
  if(a==='postbet')return postBoardBet();
  if(a==='bbmore'||a==='bbless'){S.bbOpts=Math.max(2,Math.min(6,S.bbOpts+(a==='bbmore'?1:-1)));return render()}
  if(a==='unpick'){S.boardPicks[d.id]=(S.boardPicks[d.id]||[]).filter(p=>p.user_id!==S.me);render();const {error}=await sb.from('board_picks').delete().eq('bet_id',d.id).eq('user_id',S.me);if(error)fail(error,'Couldn’t withdraw your pick.');return loadAll()}
@@ -953,6 +1061,7 @@ document.addEventListener('change',e=>{
  const id=e.target.id;
  if(id==='course'){const v=e.target.value,t=$('#tee');t.innerHTML=v?teeOpts(v):'<option value="">n/a</option>';t.disabled=!v;$('#otherWrap').hidden=!!v;const rs=v?teeRS(v,t.value):{r:'',s:''};$('#rating').value=rs.r;$('#slope').value=rs.s;updateCH()}
  if(id==='bkind'){S.betKind=e.target.value;return render()}
+ if(id==='exphoto'){const f=e.target.files&&e.target.files[0];if(f&&f.size>20e6)return toast('That file is too big. Try a smaller photo.');S.exFile=f||null;return render()}
  if(id==='tee'){const rs=teeRS($('#course').value,e.target.value);$('#rating').value=rs.r;$('#slope').value=rs.s;updateCH()}
 });
 document.addEventListener('input',e=>{if(e.target.id==='rating'||e.target.id==='slope')updateCH()});
