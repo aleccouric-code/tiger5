@@ -440,7 +440,7 @@ function roundItem(r,showWho=true){
   <div class="score"><b>${r.score}</b><span>${r.complete?rel(r.score-r.parPlayed):r.holesPlayed+' holes'}</span></div></button>`;
 }
 /* ---------- settings ---------- */
-const APP_VERSION='v35';
+const APP_VERSION='v36';
 const GEAR=`<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.86a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1Z"/></svg>`;
 // Settings: grouped like a phone's settings app. Profile, Payments, Account, About.
 function settingsView(){
@@ -475,35 +475,38 @@ function settingsView(){
 }
 
 /* ---------- leaderboard ---------- */
-// All-time count of a per-hole extra ('gb' = rips, 'beer' = beers) for a player, and whether
-// they lead that leaderboard among you and your friends (ties share it; needs at least 1).
-const holeSumAll=(u,k='gb')=>(S.rounds[u]||[]).reduce((a,r)=>a+holeSum(r,k),0);
-function leadsExtra(u,k){
- const group=[S.me,...friendIds()];if(!group.includes(u))return false;
- const top=Math.max(...group.map(x=>holeSumAll(x,k)));
- return top>0&&holeSumAll(u,k)===top;
+// Titles: whoever leads a Leaderboard category (you and your friends, all time) earns that
+// category's title (LB_CATS title/emo). Ties share it. Count categories need at least 1;
+// "lowest wins" categories need at least two players with a value, so there's competition.
+function leaderTitles(u){
+ const group=[S.me,...friendIds()];if(group.length<2||!group.includes(u))return [];
+ return LB_CATS.filter(c=>c.title).flatMap(c=>{
+  const vals=group.map(x=>{const all=S.rounds[x]||[];return [x,c.val(all,all)]}).filter(([,v])=>v!=null&&(c.low||v>0));
+  if(!vals.length||(c.low&&vals.length<2))return [];
+  const best=c.low?Math.min(...vals.map(v=>v[1])):Math.max(...vals.map(v=>v[1]));
+  const mine=vals.find(([x])=>x===u);
+  return mine&&mine[1]===best?[{...c,value:mine[1]}]:[];
+ });
 }
-// Titles for leading a leaderboard: [per-hole key, emoji, title, what's counted].
-const LEADER_TITLES=[['gb','💨','Geeb God','rips'],['beer','🍺','Beer Boss','beers'],['mush','🍄','Mush Man','mushrooms']];
 // Every category ranks you and your friends over the chosen period.
 // low:true means the smallest number leads. Values of null mean "not enough rounds".
 const LB_PERIODS=[['all','All Time'],['year','This Year'],['30','Last 30 Days']];
 const per18=(rs,f)=>{const h=rs.reduce((a,r)=>a+r.n,0);return h?Math.round(rs.reduce((a,r)=>a+f(r),0)/h*18*10)/10:null};
 const LB_CATS=[
- {k:'hcp',label:'Handicap Index',low:true,fmt:fmtIdx,val:(rs,all)=>hcp(all).index,note:'Current index from the last 20 rated rounds (ignores the period filter).'},
- {k:'avg',label:'Avg Score',low:true,val:rs=>{const f=rs.filter(r=>r.complete&&r.n===18);return f.length?Math.round(f.reduce((a,r)=>a+r.score,0)/f.length*10)/10:null},note:'Average of finished 18-hole rounds.'},
- {k:'best',label:'Best Round',low:true,val:rs=>{const f=rs.filter(r=>r.complete&&r.n===18);return f.length?Math.min(...f.map(r=>r.score)):null},note:'Lowest finished 18-hole score.'},
- {k:'t5',label:'Tiger 5 Misses',low:true,fmt:v=>v.toFixed(1),val:rs=>per18(rs.filter(r=>r.complete),r=>r.t5),note:'Tiger 5 misses per 18 holes.'},
- {k:'putts',label:'Putts',low:true,fmt:v=>v.toFixed(1),val:rs=>per18(rs.filter(r=>r.complete&&r.putts!=null),r=>r.putts),note:'Putts per 18 holes (rounds with putts on every hole).'},
- {k:'birdies',label:'Birdies',val:rs=>rs.reduce((a,r)=>a+(r.holes||[]).filter(h=>played(h)&&h.score<h.par).length,0),note:'Birdies or better, total.'},
- {k:'rounds',label:'Rounds Played',val:rs=>rs.length,note:'Rounds posted.'},
- {k:'trophy',label:'🏆 Trophy Rounds',val:rs=>rs.filter(r=>r.complete&&r.t5<=3).length,note:'Finished rounds with 3 or fewer Tiger 5 misses.'},
- {k:'poo',label:'💩 Poo Rounds',val:rs=>rs.filter(r=>r.t5>=4).length,note:'Rounds with 4 or more Tiger 5 misses. Wall of shame.'},
- {k:'beer',label:'🍺 Beers',val:rs=>rs.reduce((a,r)=>a+holeSum(r,'beer'),0),note:'Beers logged on the course.'},
- {k:'shot',label:'💥 Shotguns',val:rs=>rs.reduce((a,r)=>a+holeSum(r,'shot'),0),note:'Beers shotgunned. Counted inside the beer total too.'},
- {k:'gb',label:'💨 Rips',val:rs=>rs.reduce((a,r)=>a+holeSum(r,'gb'),0),note:'Rips logged on the course.'},
- {k:'club',label:'🪃 Thrown Clubs',val:rs=>rs.reduce((a,r)=>a+holeSum(r,'club'),0),note:'Clubs thrown. Wall of shame.'},
- {k:'mush',label:'🍄 Mushrooms',val:rs=>rs.reduce((a,r)=>a+holeSum(r,'mush'),0),note:'Mushrooms logged on the course.'},
+ {k:'hcp',label:'Handicap Index',title:'Low Man',emo:'🎯',low:true,fmt:fmtIdx,val:(rs,all)=>hcp(all).index,note:'Current index from the last 20 rated rounds (ignores the period filter).'},
+ {k:'avg',label:'Avg Score',title:'Steady Eddie',emo:'📉',low:true,val:rs=>{const f=rs.filter(r=>r.complete&&r.n===18);return f.length?Math.round(f.reduce((a,r)=>a+r.score,0)/f.length*10)/10:null},note:'Average of finished 18-hole rounds.'},
+ {k:'best',label:'Best Round',title:'Course Record',emo:'🔥',low:true,val:rs=>{const f=rs.filter(r=>r.complete&&r.n===18);return f.length?Math.min(...f.map(r=>r.score)):null},note:'Lowest finished 18-hole score.'},
+ {k:'t5',label:'Tiger 5 Misses',title:'Tiger Tamer',emo:'🐯',low:true,fmt:v=>v.toFixed(1),val:rs=>per18(rs.filter(r=>r.complete),r=>r.t5),note:'Tiger 5 misses per 18 holes.'},
+ {k:'putts',label:'Putts',title:'Flat Stick',emo:'🪄',low:true,fmt:v=>v.toFixed(1),val:rs=>per18(rs.filter(r=>r.complete&&r.putts!=null),r=>r.putts),note:'Putts per 18 holes (rounds with putts on every hole).'},
+ {k:'birdies',label:'Birdies',title:'Birdie Machine',emo:'🐦',val:rs=>rs.reduce((a,r)=>a+(r.holes||[]).filter(h=>played(h)&&h.score<h.par).length,0),note:'Birdies or better, total.'},
+ {k:'rounds',label:'Rounds Played',title:'Grinder',emo:'🗓️',val:rs=>rs.length,note:'Rounds posted.'},
+ {k:'trophy',label:'🏆 Trophy Rounds',title:'Trophy Hunter',emo:'🏆',val:rs=>rs.filter(r=>r.complete&&r.t5<=3).length,note:'Finished rounds with 3 or fewer Tiger 5 misses.'},
+ {k:'poo',label:'💩 Poo Rounds',title:'Poo Lord',emo:'💩',shame:true,val:rs=>rs.filter(r=>r.t5>=4).length,note:'Rounds with 4 or more Tiger 5 misses. Wall of shame.'},
+ {k:'beer',label:'🍺 Beers',title:'Beer Boss',emo:'🍺',val:rs=>rs.reduce((a,r)=>a+holeSum(r,'beer'),0),note:'Beers logged on the course.'},
+ {k:'shot',label:'💥 Shotguns',title:'Shotgun Sheriff',emo:'💥',val:rs=>rs.reduce((a,r)=>a+holeSum(r,'shot'),0),note:'Beers shotgunned. Counted inside the beer total too.'},
+ {k:'gb',label:'💨 Rips',title:'Geeb God',emo:'💨',val:rs=>rs.reduce((a,r)=>a+holeSum(r,'gb'),0),note:'Rips logged on the course.'},
+ {k:'club',label:'🪃 Thrown Clubs',title:'Club Chucker',emo:'🪃',shame:true,val:rs=>rs.reduce((a,r)=>a+holeSum(r,'club'),0),note:'Clubs thrown. Wall of shame.'},
+ {k:'mush',label:'🍄 Mushrooms',title:'Mush Man',emo:'🍄',val:rs=>rs.reduce((a,r)=>a+holeSum(r,'mush'),0),note:'Mushrooms logged on the course.'},
 ];
 function leadersView(){
  let h=header('Leaderboard');
@@ -603,17 +606,17 @@ function playerView(id){
  const f18=complete.filter(r=>r.n===18);
  h+=`<div class="card big"><div><b>${fmtIdx(x.index)}</b><span>Handicap Index</span></div><div><b>${f18.length?Math.round(f18.reduce((a,r)=>a+r.score,0)/f18.length):'—'}</b><span>Avg 18-Hole Score</span></div><div><b>${t5per18==null?'—':t5per18.toFixed(1)}</b><span>Tiger 5 Misses per 18</span></div></div>`;
  // Rating from Tiger 5 misses per 18: under 3 God Tier, 3–5 Goated, above 5 Average.
- // Leaderboard leaders also get gold title badges (Geeb God, Beer Boss, Mush Man).
+ // Leaderboard leaders also get title badges (Low Man, Beer Boss, Geeb God and the rest).
  if(t5per18!=null){const v=Math.round(t5per18*10)/10,tier=v<3?0:v<=5?1:2;
   const tiers=[['👑','God Tier','Under 3'],['🐐','Goated','3–5'],['😐','Average','5+']];
-  // Gold badges for whoever leads the Rips, Beers and Mushrooms leaderboards (see LEADER_TITLES).
+  // Title badges for every Leaderboard category the player leads (see leaderTitles).
   // Emoji, tier name and the number on one row; a compact 3-part scale; each title as its own badge.
   h+=`<div class="card rating">
    <div class="rtop"><span class="remo" aria-hidden="true">${tiers[tier][0]}</span>
     <div class="rmid"><span class="rl">Rating</span><b class="rname${tier<2?' pos':''}">${tiers[tier][1]}</b></div>
     <div class="rnum"><b>${v.toFixed(1)}</b><span>Tiger 5 misses<br>per 18</span></div></div>
    <div class="rscale" role="list" aria-label="Rating scale">${tiers.map(([e,l,r],i)=>`<div role="listitem" class="${i===tier?'on':''}"${i===tier?' aria-current="true"':''}><b>${l}</b><span>${r}</span></div>`).join('')}</div>
-   ${LEADER_TITLES.filter(([k])=>leadsExtra(id,k)).map(([k,emo,title,what])=>`<div class="rbadge"><span aria-hidden="true">${emo}</span><b>${title}</b><span>Most ${what} in the group: ${holeSumAll(id,k)}</span></div>`).join('')}
+   ${(()=>{const ts=leaderTitles(id);return ts.length?`<div class="rbadges">${ts.map(c=>{const what=c.label.replace(/^[^A-Za-z]+/,''),tip=`${c.title}: leads ${what} (${(c.fmt||String)(c.value)})`;return `<button class="rbadge${c.shame?' shame':''}" data-badgetip="${esc(tip)}" aria-label="${esc(tip)}"><span aria-hidden="true">${c.emo}</span>${esc(c.title)}</button>`}).join('')}</div>`:''})()}
   </div>`;}
  if(S.photoView===id&&photoOf(id))h+=`<div class="overlay photo-ov" role="dialog" aria-label="Profile photo" data-act="closephoto"><div class="row" style="flex:none"><b style="color:#fff">${esc(mineView?'You':handle(id))}</b><button data-act="closephoto" style="flex:none">Close</button></div><img src="${esc(photoOf(id))}" alt="${esc(handle(id))}"></div>`;
  if(x.index==null)h+=`<p class="sub">${x.rs.length?`${x.need} more rated round${x.need>1?'s':''} until ${mineView?'your':'their'} index is set.`:'Post 3 complete rounds with a course rating and slope to get an index.'}</p>`;
@@ -1380,6 +1383,7 @@ document.addEventListener('click',async e=>{
  }
  if(a==='pickcourse'){S.picking=!S.picking;if(S.picking)S.cstate=(COURSES[S.courseKey]&&COURSES[S.courseKey].state)||S.cstate||'VA';return render()}
  if(d.withsel){const s=new Set(S.withSel||[]);if(s.has(d.withsel))s.delete(d.withsel);else{if(s.size>=3)return toast('A group is you plus 3 friends.');s.add(d.withsel)}S.withSel=[...s];return render()}
+ if(d.badgetip)return toast(d.badgetip);
  if(d.lbper){S.lbPeriod=d.lbper;return render()}
  if(d.lbcat){S.lbCat=d.lbcat;return render()}
  if(d.viewphoto){S.photoView=d.viewphoto;return render()}

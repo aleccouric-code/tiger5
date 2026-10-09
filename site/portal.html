@@ -22,6 +22,7 @@
  color-scheme:light;
 }
 *,*::before,*::after{box-sizing:border-box}
+html{touch-action:manipulation}
 body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 var(--sans);font-variant-numeric:tabular-nums}
 [hidden]{display:none!important}
 a{color:inherit}
@@ -289,7 +290,7 @@ function render(){
  const countOf=(rounds,k)=>rounds.reduce((a,r)=>a+(r.holes||[]).reduce((x,h)=>x+(+h[k]||0),0),0);
  // Leading the all-time Rips / Beers / Mushrooms leaderboard (you and your friends) adds Geeb God / Beer Boss / Mush Man.
  const leads=k=>{const mine=countOf(all,k);return mine>0&&mine>=Math.max(0,...S.friends.map(f=>countOf(f.rounds,k)))};
- const titles=[leads('gb')?'💨 Geeb God':'',leads('beer')?'🍺 Beer Boss':'',leads('mush')?'🍄 Mush Man':''].filter(Boolean);
+ const titles=[leads('gb')?'💨 Geeb God':'',leads('beer')?'🍺 Beer Boss':'',leads('mush')?'🍄 Mush Man':'',leads('shot')?'💥 Shotgun Sheriff':'',leads('club')?'🪃 Club Chucker':''].filter(Boolean);
  const tierLabel=st.t5==null?null:st.t5<3?'👑 God Tier':st.t5<=5?'🐐 Goated':'😐 Average';
  const rating=[tierLabel,...titles].filter(Boolean).join(' · ')||null;
  let h=`<div class="dash"><div class="wrap">
