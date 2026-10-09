@@ -52,7 +52,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 .idx b{font-size:24px;font-weight:800;line-height:1}
 .idx span{font-size:11px;color:var(--mute);letter-spacing:.08em;text-transform:uppercase}
 .tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
-.tabs div{max-width:560px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr)}
+.tabs div{max-width:560px;margin:0 auto;display:grid;grid-template-columns:repeat(5,1fr)}
 .tabs button{border:0;border-radius:0;background:none;color:var(--mute);font-weight:600;padding:14px 4px}
 .tabs button[aria-current=page]{color:var(--green);box-shadow:inset 0 3px 0 var(--green)}
 .badge{display:inline-block;min-width:18px;padding:0 5px;border-radius:9px;background:var(--red);color:var(--card);font-size:12px;line-height:18px;margin-left:4px}
@@ -108,6 +108,15 @@ td.n,th.n{text-align:right;font-weight:800}
 .empty{text-align:center;padding:26px 14px;color:var(--mute)}
 .empty b{display:block;color:var(--ink);font-size:18px;margin-bottom:4px}
 .danger{background:var(--red);border-color:var(--red);color:#fff}
+.pick{display:flex;flex-wrap:wrap;gap:6px}
+.pick button{min-height:38px;padding:6px 12px;border-radius:99px}
+.pick button[aria-pressed=true]{background:var(--green);color:var(--on-green);border-color:var(--green)}
+.bet-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.bet-head b{font-size:17px}
+.money{font-weight:800;white-space:nowrap}
+.lead td{font-weight:800}
+.lead td:first-child::after{content:" ★";color:var(--gold)}
+.pos{color:var(--green)}.neg{color:var(--red)}
 </style>
 </head>
 <body>

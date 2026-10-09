@@ -112,7 +112,7 @@ function toRow(d,t,index,extra){
 
 /* ---------- state ---------- */
 const DKEY='tiger5-draft-v2',OLDKEY='tiger5-rounds-v1',IMPKEY='tiger5-imported-v1',OUTKEY='tiger5-outbox',CACHEKEY='tiger5-cache',INVKEY='tiger5-invite';
-const S={status:'loading',me:null,email:'',profiles:{},friendships:[],rounds:{},view:'feed',arg:null,busy:false,confirm:null,editName:false,nsel:'18',authStep:'signin',authEmail:'',offline:false,invite:null};
+const S={status:'loading',me:null,email:'',profiles:{},friendships:[],rounds:{},view:'feed',arg:null,busy:false,confirm:null,editName:false,nsel:'18',authStep:'signin',authEmail:'',offline:false,invite:null,trips:[],tripMembers:{},bets:{},tripsOk:true,tripSel:[],betKind:'putts',betScoring:'total'};
 let draft=LS.get(DKEY,null),hidx=0,playView=draft&&draft.holes?'hole':'start',lastKey='';
 if(draft&&!draft.holes)draft=null;
 const saveDraft=()=>LS.set(DKEY,draft);
@@ -133,8 +133,8 @@ const isNetErr=(e)=>!navigator.onLine||(e&&(e instanceof TypeError||/fetch|netwo
 function fail(e,what){console.error(e);toast(isNetErr(e)?'You’re offline. Try again when you have signal.':(what||'That didn’t save.')+' '+(e&&e.message?e.message:''))}
 
 /* ---------- loading ---------- */
-function cacheSave(){LS.set(CACHEKEY,{me:S.me,profiles:S.profiles,friendships:S.friendships,rounds:S.rounds})}
-function cacheLoad(){const c=LS.get(CACHEKEY,null);if(!c||c.me!==S.me)return false;S.profiles=c.profiles||{};S.friendships=c.friendships||[];S.rounds=c.rounds||{};return true}
+function cacheSave(){LS.set(CACHEKEY,{me:S.me,profiles:S.profiles,friendships:S.friendships,rounds:S.rounds,trips:S.trips,tripMembers:S.tripMembers,bets:S.bets})}
+function cacheLoad(){const c=LS.get(CACHEKEY,null);if(!c||c.me!==S.me)return false;S.profiles=c.profiles||{};S.friendships=c.friendships||[];S.rounds=c.rounds||{};S.trips=c.trips||[];S.tripMembers=c.tripMembers||{};S.bets=c.bets||{};return true}
 
 async function loadAll(){
  try{
@@ -145,10 +145,16 @@ async function loadAll(){
   S.friendships=fr||[];
   const others=[...new Set(S.friendships.map(other))];
   if(others.length){const {data:ps,error}=await sb.from('profiles').select('id,handle').in('id',others);if(error)throw error;(ps||[]).forEach(p=>profiles[p.id]=p)}
+  const ids=[S.me,...new Set(S.friendships.filter(f=>f.status==='accepted').map(other))];
+  const tripMates=await loadTrips(profiles,ids);
   S.profiles=profiles;
-  const ids=[S.me,...friendIds()];
   const {data:rs,error:e3}=await sb.from('rounds').select('*').in('user_id',ids).order('date',{ascending:false}).order('created_at',{ascending:false}).limit(1000);if(e3)throw e3;
   const rounds={};ids.forEach(i=>rounds[i]=[]);(rs||[]).forEach(r=>{const x=fromRow(r);(rounds[x.uid]=rounds[x.uid]||[]).push(x)});
+  if(tripMates.length&&S.trips.length){
+   const from=S.trips.reduce((a,t)=>t.start_date<a?t.start_date:a,'9999'),to=S.trips.reduce((a,t)=>t.end_date>a?t.end_date:a,'0000');
+   const {data:tr,error:e4}=await sb.from('rounds').select('*').in('user_id',tripMates).gte('date',from).lte('date',to).limit(1000);
+   if(!e4)(tr||[]).forEach(r=>{const x=fromRow(r);(rounds[x.uid]=rounds[x.uid]||[]).push(x)});
+  }
   S.rounds=rounds;addPendingLocal();
   S.status='ready';S.offline=false;cacheSave();
   render();
@@ -158,6 +164,32 @@ async function loadAll(){
   if(cacheLoad()){S.status='ready';S.offline=true;addPendingLocal()}
   else if(S.status==='loading')S.status='error';
   render();
+ }
+}
+// Loads trips, members and bets. Returns trip-mates who aren't friends (their
+// trip-dated rounds are fetched separately). If trips.sql hasn't been run yet,
+// the rest of the app keeps working and the Trips tab explains what to do.
+async function loadTrips(profiles,friendsAndMe){
+ try{
+  const {data:tm,error:e1}=await sb.from('trip_members').select('trip_id,user_id');if(e1)throw e1;
+  const tripIds=[...new Set((tm||[]).map(x=>x.trip_id))];
+  let trips=[],bets=[];
+  if(tripIds.length){
+   const a=await sb.from('trips').select('*').in('id',tripIds);if(a.error)throw a.error;trips=a.data||[];
+   const b=await sb.from('bets').select('*').in('trip_id',tripIds).order('created_at');if(b.error)throw b.error;bets=b.data||[];
+  }
+  const members={};(tm||[]).forEach(x=>(members[x.trip_id]=members[x.trip_id]||[]).push(x.user_id));
+  const betsBy={};bets.forEach(b=>(betsBy[b.trip_id]=betsBy[b.trip_id]||[]).push(b));
+  S.trips=trips.sort((x,y)=>y.start_date.localeCompare(x.start_date));S.tripMembers=members;S.bets=betsBy;S.tripsOk=true;
+  const mates=[...new Set(Object.values(members).flat())].filter(u=>!friendsAndMe.includes(u));
+  const missing=mates.filter(u=>!profiles[u]);
+  if(missing.length){const {data:ps}=await sb.from('profiles').select('id,handle').in('id',missing);(ps||[]).forEach(p=>profiles[p.id]=p)}
+  return mates;
+ }catch(e){
+  console.error(e);
+  if(e&&(e.code==='42P01'||e.code==='PGRST205'||/does not exist|schema cache/i.test(e.message||'')))S.tripsOk=false;
+  else throw e;
+  return [];
  }
 }
 function addPendingLocal(){
@@ -212,6 +244,9 @@ function render(){
  else if(S.status==='loading')html=header('Tiger 5')+`<div class="empty"><b>Loading your group…</b>Rounds and friends appear here in a moment.</div>`;
  else if(S.status!=='ready')html=header('Tiger 5')+offlineView();
  else if(S.view==='friends')html=friendsView();
+ else if(S.view==='trips')html=tripsView();
+ else if(S.view==='newtrip')html=newTripView();
+ else if(S.view==='trip')html=tripView(S.arg);
  else if(S.view==='player')html=playerView(S.arg||S.me);
  else if(S.view==='round')html=roundView(S.arg);
  else html=feedView();
@@ -226,8 +261,8 @@ function render(){
 function renderTabs(){
  const hide=S.status==='auth'||S.status==='setup';
  const n=S.status==='ready'?incoming().length:0;
- const cur=S.view==='player'&&(S.arg||S.me)===S.me?'me':(S.view==='round'||S.view==='player')?'':S.view;
- const t=[['feed','Feed'],['play',draft?'Round':'Play'],['friends','Friends'],['me','Me']];
+ const cur=S.view==='player'&&(S.arg||S.me)===S.me?'me':(S.view==='trip'||S.view==='newtrip')?'trips':(S.view==='round'||S.view==='player')?'':S.view;
+ const t=[['feed','Feed'],['play',draft?'Round':'Play'],['trips','Trips'],['friends','Friends'],['me','Me']];
  $('#tabs').innerHTML=hide?'':`<div>${t.map(([k,l])=>`<button data-nav="${k}" ${cur===k?'aria-current="page"':''}>${l}${k==='friends'&&n?`<span class="badge">${n}</span>`:''}</button>`).join('')}</div>`;
 }
 function header(title,eyebrow){
@@ -277,6 +312,7 @@ function feedView(){
  let h=header('Feed');
  const inc=incoming().length;
  if(inc)h+=`<button class="card item note" data-nav="friends"><div class="mid"><b>${inc} friend request${inc>1?'s':''}</b><span>Tap to review</span></div></button>`;
+ S.trips.filter(t=>tripStatus(t)==='live').forEach(t=>h+=`<button class="card item note" data-trip="${esc(t.id)}"><div class="mid"><b>${esc(t.name)}</b><span>Trip happening now · ${(S.bets[t.id]||[]).length} bets</span></div><span class="tag gold">Leaderboards</span></button>`);
  if(draft)h+=`<button class="card item" data-nav="play"><div class="mid"><b>Round in progress</b><span>${esc(draft.course)}</span></div><span class="tag">Resume</span></button>`;
  if(!rs.length)h+=`<div class="card empty"><b>No posted rounds yet</b>Play a round and post it, or add friends to see theirs here.<div class="row" style="margin-top:14px"><button class="primary" data-nav="play">Start a round</button><button data-nav="friends">Add friends</button></div></div>`;
  else h+=rs.map(r=>roundItem(r)).join('');
@@ -356,6 +392,176 @@ function roundView(key){
  h+=`</table></div>`;
  if(mine&&!r.pending)h+=S.confirm==='del'?`<div class="card note"><p style="margin-top:0">Delete this round for good? It also comes off your handicap.</p><div class="row"><button class="danger" data-act="delround" data-id="${esc(r.id)}">Delete round</button><button data-act="cancelc">Keep it</button></div></div>`:`<button class="wide" data-act="ask" data-c="del">Delete round</button>`;
  return h;
+}
+
+/* ---------- trips and side bets ---------- */
+// Bets are settled from finished rounds posted inside the trip's dates.
+// "low" means the lowest value wins. Money is only tracked, never moved.
+const BET_KINDS={
+ putts:{label:'Fewest putts',low:true,val:r=>r.putts},
+ gross:{label:'Lowest total score',low:true,val:r=>r.score},
+ net:{label:'Lowest net score',low:true,val:r=>r.net},
+ t5:{label:'Fewest Tiger 5 misses',low:true,val:r=>r.t5},
+ birdies:{label:'Most birdies',low:false,val:r=>(r.holes||[]).filter(h=>played(h)&&h.score<h.par).length},
+ three_putts:{label:'Fewest 3-putts',low:true,val:r=>(r.holes||[]).filter(h=>played(h)&&h.putts>=3).length},
+ best_round:{label:'Best single round',low:true,single:true},
+ custom:{label:'Custom bet (pick the winner)',manual:true}
+};
+const fmtMoney=(n)=>{const v=Math.round(Math.abs(n)*100)/100;return '$'+(v%1?v.toFixed(2):v.toFixed(0))};
+const fmtRange=(t)=>t.start_date===t.end_date?fmtDate(t.start_date):fmtDate(t.start_date)+' – '+fmtDate(t.end_date);
+const tripStatus=(t)=>{const d=today();return d<t.start_date?'upcoming':d>t.end_date?'done':'live'};
+const tripRounds=(t,uid)=>(S.rounds[uid]||[]).filter(r=>r.complete&&r.date>=t.start_date&&r.date<=t.end_date);
+const curTrip=()=>S.trips.find(x=>x.id===S.arg);
+
+function betStandings(t,bet){
+ const k=BET_KINDS[bet.kind]||BET_KINDS.custom,mem=S.tripMembers[t.id]||[];
+ const rows=mem.map(uid=>{
+  let rs=tripRounds(t,uid);
+  if(k.single){const f=rs.filter(r=>r.n===18);return{uid,n:f.length,v:f.length?Math.min(...f.map(r=>r.score)):null}}
+  if(bet.kind==='net')rs=rs.filter(r=>r.net!=null);
+  if(!rs.length)return{uid,n:0,v:null};
+  const sum=rs.reduce((a,r)=>a+(k.val(r)||0),0),holes=rs.reduce((a,r)=>a+r.n,0);
+  return{uid,n:rs.length,v:bet.scoring==='avg'?Math.round(sum/holes*18*10)/10:sum};
+ });
+ const ranked=rows.filter(r=>r.v!=null).sort((a,b)=>k.low?a.v-b.v:b.v-a.v);
+ const best=ranked.length?ranked[0].v:null;
+ return{ranked,none:rows.filter(r=>r.v==null),leaders:best==null?[]:ranked.filter(r=>r.v===best).map(r=>r.uid),
+  uneven:!k.single&&bet.scoring==='total'&&new Set(ranked.map(r=>r.n)).size>1};
+}
+function betWinners(t,bet){
+ const mem=S.tripMembers[t.id]||[];
+ return bet.kind==='custom'?(bet.winners||[]).filter(u=>mem.includes(u)):betStandings(t,bet).leaders;
+}
+// Every player puts the stake into each bet's pot; winners split the pot.
+// Returns each player's net and the fewest payments that square everyone up.
+function settleUp(t){
+ const mem=S.tripMembers[t.id]||[],net={};mem.forEach(u=>net[u]=0);
+ (S.bets[t.id]||[]).forEach(b=>{
+  const w=betWinners(t,b),stake=+b.stake||0;if(!w.length||!stake)return;
+  mem.forEach(u=>net[u]-=stake);
+  const share=stake*mem.length/w.length;w.forEach(u=>net[u]+=share);
+ });
+ const cred=[],debt=[];
+ for(const u in net){const v=Math.round(net[u]*100)/100;if(v>0)cred.push({u,v});else if(v<0)debt.push({u,v:-v})}
+ cred.sort((a,b)=>b.v-a.v);debt.sort((a,b)=>b.v-a.v);
+ const pays=[];let i=0,j=0;
+ while(i<debt.length&&j<cred.length){
+  const x=Math.min(debt[i].v,cred[j].v);
+  if(x>=0.01)pays.push({from:debt[i].u,to:cred[j].u,amt:Math.round(x*100)/100});
+  debt[i].v-=x;cred[j].v-=x;if(debt[i].v<0.005)i++;if(cred[j].v<0.005)j++;
+ }
+ return{net,pays};
+}
+
+function tripsView(){
+ let h=header('Trips');
+ if(!S.tripsOk)return h+`<div class="card note"><b>Trips need one more database step</b><p style="margin:4px 0 0">Run <b>supabase/trips.sql</b> in the Supabase SQL Editor, then reopen the app.</p></div>`;
+ h+=`<button class="primary wide" style="margin-bottom:14px" data-nav="newtrip">Plan a trip</button>`;
+ if(!S.trips.length)return h+`<div class="card empty"><b>No trips yet</b>Create a trip, add your friends, and set side bets like fewest putts. Rounds posted during the trip count automatically.</div>`;
+ S.trips.forEach(t=>{
+  const st=tripStatus(t),mem=S.tripMembers[t.id]||[],nb=(S.bets[t.id]||[]).length;
+  h+=`<button class="card item" data-trip="${esc(t.id)}"><div class="mid"><b>${esc(t.name)}</b><span>${fmtRange(t)} · ${mem.length} player${mem.length===1?'':'s'} · ${nb} bet${nb===1?'':'s'}</span></div><span class="tag ${st==='live'?'gold':''}">${st==='live'?'Happening now':st==='upcoming'?'Upcoming':'Finished'}</span></button>`;
+ });
+ return h;
+}
+function newTripView(){
+ const fr=friendIds(),end=new Date();end.setDate(end.getDate()+3);
+ return header('Plan a trip','Trips')+`<div class="card">
+ <label for="tname">Trip name</label><input id="tname" maxlength="60" placeholder="e.g. Myrtle Beach 2026">
+ <div class="row"><div><label for="tstart">First day</label><input type="date" id="tstart" value="${today()}"></div><div><label for="tend">Last day</label><input type="date" id="tend" value="${isoDate(end)}"></div></div>
+ <label>Who’s going</label>
+ ${fr.length?`<div class="pick">${fr.map(id=>`<button data-tsel="${esc(id)}" aria-pressed="${S.tripSel.includes(id)}">${esc(handle(id))}</button>`).join('')}</div><p class="hint">You’re included automatically. Only friends can be added; you can add more later.</p>`
+  :`<p class="hint">Add friends on the Friends tab first, then invite them here.</p>`}
+ <button class="primary wide" style="margin-top:14px" data-act="createtrip" ${S.busy?'disabled':''}>Create trip</button></div>`;
+}
+function tripView(id){
+ const t=S.trips.find(x=>x.id===id);
+ if(!t)return header('Trip','Trips')+`<div class="card empty"><b>Trip not found</b>It may have been deleted, or you were removed from it.</div>`;
+ const mem=S.tripMembers[t.id]||[],owner=t.created_by===S.me,st=tripStatus(t),bets=S.bets[t.id]||[];
+ const who=(u)=>u===S.me?'You':handle(u);
+ let h=header(t.name,fmtRange(t));
+ h+=`<div class="tags" style="margin:-4px 0 4px">${mem.map(u=>`<span class="tag">${esc(who(u))}</span>`).join('')}</div>`;
+
+ h+=`<h2>Bets</h2>`;
+ if(!bets.length)h+=`<div class="card empty"><b>No bets yet</b>Add one below. Leaderboards fill in from finished rounds posted ${fmtRange(t)}.</div>`;
+ bets.forEach(b=>{
+  const k=BET_KINDS[b.kind]||BET_KINDS.custom,stake=+b.stake||0;
+  h+=`<div class="card"><div class="bet-head"><b>${esc(b.name)}</b><span class="money">${stake?fmtMoney(stake)+' each · '+fmtMoney(stake*mem.length)+' pot':'Bragging rights'}</span></div>`;
+  if(k.manual){
+   const w=(b.winners||[]).filter(u=>mem.includes(u));
+   h+=`<p class="hint" style="margin:4px 0 8px">${w.length?(st==='done'?'Won by ':'Winner: ')+'<b>'+esc(w.map(who).join(' & '))+'</b>':'Tap the winner once it’s decided.'}</p><div class="pick">${mem.map(u=>`<button data-win="${esc(b.id)}" data-u="${esc(u)}" aria-pressed="${w.includes(u)}">${esc(who(u))}</button>`).join('')}</div>`;
+  }else{
+   const s=betStandings(t,b);
+   h+=`<p class="hint" style="margin:4px 0 0">${k.single?'Lowest 18-hole score in a single round':b.scoring==='avg'?'Average per 18 holes':'Total across all trip rounds'}</p>`;
+   if(!s.ranked.length)h+=`<p class="hint">No finished trip rounds yet.</p>`;
+   else h+=`<table style="margin-top:6px"><tbody>${s.ranked.map(r=>`<tr class="${s.leaders.includes(r.uid)?'lead':''}"><td>${esc(who(r.uid))}</td><td class="n" style="font-weight:400;color:var(--mute)">${r.n} rd${r.n===1?'':'s'}</td><td class="n">${r.v}</td></tr>`).join('')}${s.none.map(r=>`<tr><td style="color:var(--mute)">${esc(who(r.uid))}</td><td></td><td class="n" style="font-weight:400;color:var(--mute)">${b.kind==='net'?'no index':'—'}</td></tr>`).join('')}</tbody></table>`;
+   if(s.uneven)h+=`<p class="hint">Players have played different numbers of rounds, so totals aren’t a fair comparison yet.</p>`;
+   if(s.leaders.length)h+=`<p class="hint">${st==='done'?'Won by':'Leading:'} <b>${esc(s.leaders.map(who).join(' & '))}</b>${s.leaders.length>1&&stake?' (pot split)':''}</p>`;
+  }
+  h+=S.confirm==='bet:'+b.id?`<div class="row" style="margin-top:10px"><button class="danger" data-act="delbet" data-id="${esc(b.id)}">Delete bet</button><button data-act="cancelc">Keep</button></div>`
+   :`<p style="margin:8px 0 0;text-align:right"><button class="link" data-act="ask" data-c="bet:${esc(b.id)}">Delete bet</button></p>`;
+  h+=`</div>`;
+ });
+
+ const k=BET_KINDS[S.betKind];
+ h+=`<div class="card"><b>Add a bet</b>
+ <label for="bkind">Bet</label><select id="bkind">${Object.entries(BET_KINDS).map(([v,x])=>`<option value="${v}" ${v===S.betKind?'selected':''}>${x.label}</option>`).join('')}</select>
+ ${k.manual?`<label for="bname">What’s the bet?</label><input id="bname" maxlength="60" placeholder="e.g. Longest drive on 18">`:''}
+ ${k.single||k.manual?'':`<label>Scoring</label><div class="seg">${[['total','Trip total'],['avg','Average per 18']].map(([v,l])=>`<button data-bs="${v}" aria-pressed="${S.betScoring===v}">${l}</button>`).join('')}</div>`}
+ <label for="bstake">Stake per player ($)</label><input id="bstake" inputmode="decimal" placeholder="0 for bragging rights">
+ <button class="primary wide" style="margin-top:14px" data-act="addbet" ${S.busy?'disabled':''}>Add bet</button></div>`;
+
+ if(bets.some(b=>+b.stake>0)){
+  const sv=settleUp(t);
+  h+=`<h2>${st==='done'?'Settle up':'Settle up if the trip ended now'}</h2><div class="card">`;
+  h+=sv.pays.length?`<table><tbody>${sv.pays.map(p=>`<tr><td>${esc(who(p.from))} pay${p.from===S.me?'':'s'} ${esc(p.to===S.me?'you':handle(p.to))}</td><td class="n">${fmtMoney(p.amt)}</td></tr>`).join('')}</tbody></table>`:`<p style="margin:0">Nobody owes anything yet.</p>`;
+  h+=`<p class="hint">Trip net: ${mem.map(u=>{const v=Math.round((sv.net[u]||0)*100)/100;return `${esc(who(u))} <span class="${v>0?'pos':v<0?'neg':''}">${v>0?'+':v<0?'−':''}${fmtMoney(v)}</span>`}).join(' · ')}</p>
+  <p class="hint">The app only keeps track. Settle up however your group pays each other.</p></div>`;
+ }
+
+ const rs=mem.flatMap(u=>tripRounds(t,u)).sort((a,b)=>b.date.localeCompare(a.date)||(b.at||0)-(a.at||0));
+ h+=`<h2>Trip rounds</h2>`+(rs.length?rs.map(r=>roundItem(r)).join(''):`<div class="card empty"><b>No rounds yet</b>Finished rounds posted ${fmtRange(t)} show up here.</div>`);
+
+ h+=`<h2>Players</h2><div class="card">`;
+ h+=mem.map(u=>`<div class="item" style="padding:4px 0"><div class="mid"><b>${esc(who(u))}${u===t.created_by?' <span class="tag">Organizer</span>':''}</b></div>${owner&&u!==S.me?`<button class="link" data-act="rmmember" data-u="${esc(u)}">Remove</button>`:''}</div>`).join('');
+ if(owner){const add=friendIds().filter(f=>!mem.includes(f));if(add.length)h+=`<label>Add friends</label><div class="pick">${add.map(f=>`<button data-act="addmember" data-u="${esc(f)}">+ ${esc(handle(f))}</button>`).join('')}</div>`}
+ h+=`</div>`;
+ h+=owner?(S.confirm==='deltrip'?`<div class="card note"><p style="margin-top:0">Delete this trip and all its bets? Rounds stay on everyone’s cards.</p><div class="row"><button class="danger" data-act="deltrip">Delete trip</button><button data-act="cancelc">Keep it</button></div></div>`:`<button class="wide" data-act="ask" data-c="deltrip">Delete trip</button>`)
+  :(S.confirm==='leave'?`<div class="row"><button class="danger" data-act="leavetrip">Leave trip</button><button data-act="cancelc">Stay</button></div>`:`<button class="wide" data-act="ask" data-c="leave">Leave trip</button>`);
+ return h;
+}
+
+async function createTrip(){
+ const name=$('#tname').value.trim(),start=$('#tstart').value,end=$('#tend').value;
+ if(!name)return toast('Give the trip a name.');
+ if(!start||!end||end<start)return toast('The last day can’t be before the first day.');
+ S.busy=true;render();
+ const id=newId();
+ let {error}=await sb.from('trips').insert({id,name,start_date:start,end_date:end,created_by:S.me});
+ if(!error)({error}=await sb.from('trip_members').insert([S.me,...S.tripSel].map(u=>({trip_id:id,user_id:u}))));
+ S.busy=false;
+ if(error){fail(error,'Couldn’t create the trip.');return render()}
+ S.tripSel=[];S.view='trip';S.arg=id;toast('Trip created');await loadAll();
+}
+async function addBet(){
+ const k=BET_KINDS[S.betKind];
+ const name=k.manual?$('#bname').value.trim():k.label+(!k.single&&S.betScoring==='avg'?' (avg per 18)':'');
+ if(!name)return toast('Describe the bet.');
+ const raw=$('#bstake').value.replace(/[$,\s]/g,''),stake=raw?+raw:0;
+ if(!(stake>=0)||stake>99999)return toast('Enter the stake in dollars, or 0.');
+ S.busy=true;render();
+ const {error}=await sb.from('bets').insert({id:newId(),trip_id:S.arg,kind:S.betKind,name,stake,scoring:k.single||k.manual?'total':S.betScoring,created_by:S.me});
+ S.busy=false;
+ if(error){fail(error,'Couldn’t add the bet.');return render()}
+ const n=$('#bname');if(n)n.value='';$('#bstake').value='';
+ toast('Bet added');loadAll();
+}
+async function toggleWinner(betId,u){
+ const list=S.bets[S.arg]||[],i=list.findIndex(x=>x.id===betId);if(i<0)return;
+ const w=new Set(list[i].winners||[]);w.has(u)?w.delete(u):w.add(u);
+ list[i]={...list[i],winners:[...w]};render();
+ const {error}=await sb.from('bets').update({winners:list[i].winners}).eq('id',betId);
+ if(error){fail(error,'Couldn’t save the winner.');loadAll()}
 }
 
 /* ---------- play ---------- */
@@ -480,6 +686,10 @@ document.addEventListener('click',async e=>{
  const d=b.dataset,a=d.act;
  if(d.nav){if(d.nav==='me')return go('player',S.me);if(d.nav==='play'&&draft&&playView==='start')playView='hole';return go(d.nav)}
  if(d.round)return go('round',d.round);
+ if(d.trip)return go('trip',d.trip);
+ if(d.tsel){const s=new Set(S.tripSel);s.has(d.tsel)?s.delete(d.tsel):s.add(d.tsel);S.tripSel=[...s];return render()}
+ if(d.bs){S.betScoring=d.bs;return render()}
+ if(d.win)return toggleWinner(d.win,d.u);
  if(d.player)return go('player',d.player);
  if(b.parentElement&&b.parentElement.id==='nseg'){S.nsel=d.n;[...b.parentElement.children].forEach(x=>x.setAttribute('aria-pressed',x===b));return updateCH()}
 
@@ -540,6 +750,13 @@ document.addEventListener('click',async e=>{
   toast('Round deleted');go('feed');return loadAll();
  }
  if(a==='import')return importOld();
+ if(a==='createtrip')return createTrip();
+ if(a==='addbet')return addBet();
+ if(a==='delbet'){S.confirm=null;const {error}=await sb.from('bets').delete().eq('id',d.id);if(error)return fail(error,'Couldn’t delete the bet.');return loadAll()}
+ if(a==='addmember'){const {error}=await sb.from('trip_members').insert({trip_id:S.arg,user_id:d.u});if(error)return fail(error,'Couldn’t add them.');toast(handle(d.u)+' added');return loadAll()}
+ if(a==='rmmember'){const {error}=await sb.from('trip_members').delete().eq('trip_id',S.arg).eq('user_id',d.u);if(error)return fail(error,'Couldn’t remove them.');return loadAll()}
+ if(a==='deltrip'){S.confirm=null;const {error}=await sb.from('trips').delete().eq('id',S.arg);if(error)return fail(error,'Couldn’t delete the trip.');toast('Trip deleted');go('trips');return loadAll()}
+ if(a==='leavetrip'){S.confirm=null;const {error}=await sb.from('trip_members').delete().eq('trip_id',S.arg).eq('user_id',S.me);if(error)return fail(error,'Couldn’t leave the trip.');go('trips');return loadAll()}
  if(a==='start'){
   const k=$('#course').value,c=COURSES[k],n=S.nsel,tee=$('#tee').value;
   const off=n==='back'?9:0,len=n==='18'?18:9;
@@ -566,6 +783,7 @@ document.addEventListener('click',async e=>{
 document.addEventListener('change',e=>{
  const id=e.target.id;
  if(id==='course'){const v=e.target.value,t=$('#tee');t.innerHTML=v?teeOpts(v):'<option value="">n/a</option>';t.disabled=!v;$('#otherWrap').hidden=!!v;const rs=v?teeRS(v,t.value):{r:'',s:''};$('#rating').value=rs.r;$('#slope').value=rs.s;updateCH()}
+ if(id==='bkind'){S.betKind=e.target.value;return render()}
  if(id==='tee'){const rs=teeRS($('#course').value,e.target.value);$('#rating').value=rs.r;$('#slope').value=rs.s;updateCH()}
 });
 document.addEventListener('input',e=>{if(e.target.id==='rating'||e.target.id==='slope')updateCH()});

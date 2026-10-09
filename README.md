@@ -32,6 +32,15 @@ Commit everything to the `tiger5` repo and push. GitHub Pages serves `index.html
 
 Whenever you change app files later, bump `VERSION` at the top of `sw.js` so installed phones pick up the update.
 
+## Trips and side bets
+Run `supabase/trips.sql` once in the SQL Editor (after `schema.sql`) to turn on the Trips tab.
+
+A trip has dates and players (the organizer adds friends). Any player can add bets: fewest putts, lowest gross or net, fewest Tiger 5 misses, most birdies, fewest 3-putts, best single round, or a custom bet where you tap the winner. Built-in bets update automatically from finished rounds posted within the trip's dates, either as a trip total or as an average per 18 holes.
+
+Each player puts the stake into each bet's pot and the winners split it. **Settle up** shows each player's net and the fewest payments to square everyone up. The app only keeps track; it never moves money.
+
+Trip-mates who aren't friends can see each other's names and the rounds they posted during the trip, nothing else.
+
 ## Inviting friends
 Open **Friends → Share invite link**. A friend who opens the link signs in with their email, picks a name, and gets a prompt to add you. They can also type your 6-letter friend code on their Friends page. You see each other's rounds once the request is accepted.
 

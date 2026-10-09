@@ -52,8 +52,12 @@ create table if not exists public.rounds (
 );
 create index if not exists rounds_user_date on public.rounds (user_id, date desc);
 
--- Helpers (security definer so policies can check friendships without recursion)
-create or replace function public.are_friends(a uuid, b uuid)
+-- Helpers (security definer so policies can check friendships without recursion).
+-- They live in a "private" schema the public API doesn't expose.
+create schema if not exists private;
+grant usage on schema private to authenticated;
+
+create or replace function private.are_friends(a uuid, b uuid)
 returns boolean language sql stable security definer set search_path = public as $$
   select exists (
     select 1 from public.friendships
@@ -62,13 +66,16 @@ returns boolean language sql stable security definer set search_path = public as
   );
 $$;
 
-create or replace function public.are_connected(a uuid, b uuid)
+create or replace function private.are_connected(a uuid, b uuid)
 returns boolean language sql stable security definer set search_path = public as $$
   select exists (
     select 1 from public.friendships
     where (requester = a and addressee = b) or (requester = b and addressee = a)
   );
 $$;
+
+revoke all on all functions in schema private from public, anon;
+grant execute on all functions in schema private to authenticated;
 
 -- Look up a player by friend code without exposing the whole player list.
 create or replace function public.find_player(code text)
@@ -89,7 +96,7 @@ alter table public.rounds      enable row level security;
 -- Profiles: see yourself and anyone you have a request or friendship with.
 drop policy if exists "profiles read" on public.profiles;
 create policy "profiles read" on public.profiles for select to authenticated
-  using (id = auth.uid() or public.are_connected(auth.uid(), id));
+  using (id = auth.uid() or private.are_connected(auth.uid(), id));
 drop policy if exists "profiles insert own" on public.profiles;
 create policy "profiles insert own" on public.profiles for insert to authenticated
   with check (id = auth.uid());
@@ -115,7 +122,7 @@ create policy "friendships delete" on public.friendships for delete to authentic
 -- Rounds: you and your accepted friends can read; only you write yours.
 drop policy if exists "rounds read" on public.rounds;
 create policy "rounds read" on public.rounds for select to authenticated
-  using (user_id = auth.uid() or public.are_friends(auth.uid(), user_id));
+  using (user_id = auth.uid() or private.are_friends(auth.uid(), user_id));
 drop policy if exists "rounds insert own" on public.rounds;
 create policy "rounds insert own" on public.rounds for insert to authenticated
   with check (user_id = auth.uid());
