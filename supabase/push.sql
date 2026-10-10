@@ -3,7 +3,7 @@
 -- Database triggers (and push_outbox, for messages only the app can work out) put
 -- notifications in private.push_queue and wake the `push` edge function, which sends them.
 
-create extension if not exists pg_net;
+create extension if not exists pg_net schema extensions;
 
 -- One row per phone/browser. Endpoints must belong to a real push service.
 create table if not exists public.push_subscriptions (
