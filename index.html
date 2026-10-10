@@ -120,11 +120,26 @@ ul.paid .link{margin-left:auto}
 .gmatch{display:flex;flex-direction:column;gap:1px;margin-top:8px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px}
 .gopts{align-items:flex-end}
 .gopts .toggle{margin:0}
-.tee.mine{border-color:var(--gold);box-shadow:inset 3px 0 0 var(--gold)}
-.tcourse{color:var(--mute);font-size:14px;text-align:right;min-width:0}
-.tplayers{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin-top:8px}
-.tact{margin-top:10px;flex-wrap:wrap}
-.tact button{flex:1 1 auto}
+.tday{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:20px 0 8px}
+.tday h2{margin:0}
+.tday>span{color:var(--mute);font-size:13px;font-weight:600}
+.tnow{display:inline-block;margin-left:6px;padding:2px 8px;border-radius:99px;background:var(--green);color:var(--on-green);font-size:12px;vertical-align:middle}
+.tcard{display:grid;grid-template-columns:64px minmax(0,1fr);margin-bottom:10px;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.ttime{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:14px 4px;background:var(--gbg);color:var(--green);border-right:1px solid var(--line)}
+.ttime b{font-size:20px;font-weight:800;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.ttime span{font-size:12px;font-weight:700;letter-spacing:.06em}
+.tcard.mine{border-color:var(--gold)}
+.tcard.mine .ttime{background:var(--goldbg);color:var(--gold);border-right-color:var(--gold)}
+.tbody{display:flex;flex-direction:column;gap:3px;padding:12px;min-width:0}
+.tcname{font-size:16px;line-height:1.25}
+.tmeta{color:var(--mute);font-size:13px}
+.tgroup{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.tchip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px 2px 2px;border-radius:99px;background:var(--bg);border:1px solid var(--line);font-size:13px;font-weight:600}
+.tchip.me{border-color:var(--gold)}
+.tchip.open{padding:2px 8px;border-style:dashed;background:none;color:var(--mute);font-weight:500}
+.tstart{margin-top:10px}
+.tlinks{display:flex;gap:16px;margin-top:8px}
+.tlinks .link{padding:4px 0;min-height:32px;font-size:14px}
 .livedot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--red);vertical-align:middle;margin-left:4px}
 @media (prefers-reduced-motion:no-preference){.livedot{animation:livepulse 1.6s ease-in-out infinite}}
 @keyframes livepulse{50%{opacity:.35}}

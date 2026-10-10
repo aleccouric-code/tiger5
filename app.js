@@ -452,7 +452,7 @@ function roundItem(r,showWho=true){
   <div class="score"><b>${r.score}</b><span>${r.complete?rel(r.score-r.parPlayed):r.holesPlayed+' holes'}</span></div></button>`;
 }
 /* ---------- settings ---------- */
-const APP_VERSION='v45';
+const APP_VERSION='v46';
 const GEAR=`<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.86a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1Z"/></svg>`;
 // Settings: grouped like a phone's settings app. Profile, Payments, Account, About.
 function settingsView(){
@@ -1026,19 +1026,24 @@ const tripDays=(t)=>{const out=[],[y,m,d]=t.start_date.split('-').map(Number),dt
 const courseKeyByName=(name)=>Object.keys(COURSES).find(k=>COURSES[k].name.toLowerCase()===(name||'').trim().toLowerCase())||null;
 function teeSheet(t,mem,who){
  const list=(S.teeTimes[t.id]||[]).slice().sort((a,b)=>(a.day+a.time).localeCompare(b.day+b.time));
- let h='';
- if(!list.length)h+=`<div class="card empty"><b>No Tee Times Yet</b>Plan each day’s groups below. Everyone you put in a group gets a notification.</div>`;
+ let h=S.teeFormOpen?teeForm(t,mem,who):`<button class="primary wide" style="margin-bottom:6px" data-act="teeopen">+ Add a Tee Time</button>`;
+ if(!list.length)h+=`<div class="card empty"><b>No Tee Times Yet</b>Plan each day’s groups ahead of the trip. Everyone you put in a group gets a notification, plus a reminder the night before.</div>`;
  [...new Set(list.map(x=>x.day))].forEach(day=>{
-  h+=`<h2>${esc(fmtDay(day))}${day===today()?' · Today':''}</h2>`;
+  const n=list.filter(x=>x.day===day).length;
+  h+=`<div class="tday"><h2>${esc(fmtDay(day))}${day===today()?' <span class="tnow">Today</span>':''}</h2><span>${n} tee time${n===1?'':'s'}</span></div>`;
   list.filter(x=>x.day===day).forEach(x=>{
-   const mine=x.players.includes(S.me),open=4-x.players.length;
-   h+=`<div class="card tee${mine?' mine':''}"><div class="bet-head"><b>${esc(fmtTime(x.time))}</b><span class="tcourse">${esc(x.course)}${x.tee?' · '+esc(x.tee):''}</span></div>
-    <div class="tplayers">${x.players.map(u=>withPic(u,who(u))).join('')}${open>0?`<span class="hint" style="margin:0">${open} open spot${open===1?'':'s'}</span>`:''}</div>
-    ${x.note?`<p class="hint" style="margin:6px 0 0">${esc(x.note)}</p>`:''}
-    <div class="row tact">${mine&&day===today()?`<button class="primary" data-act="teestart" data-id="${esc(x.id)}">Start This Round</button>`:''}<button data-act="teeedit" data-id="${esc(x.id)}">Edit</button><button data-act="teecopy" data-id="${esc(x.id)}">Copy</button>${S.confirm==='tee:'+x.id?`<button class="danger" data-act="teedel" data-id="${esc(x.id)}">Delete</button>`:`<button class="link" data-act="ask" data-c="tee:${esc(x.id)}">Delete</button>`}</div></div>`;
+   const mine=x.players.includes(S.me),[hm,ap]=fmtTime(x.time).split(' '),first=u=>u===S.me?'You':handle(u).split(' ')[0];
+   const meta=[x.tee?x.tee+' tees':'',x.note||''].filter(Boolean).join(' · ');
+   h+=`<div class="tcard${mine?' mine':''}">
+    <div class="ttime"><b>${esc(hm)}</b><span>${esc(ap)}</span></div>
+    <div class="tbody"><b class="tcname">${esc(x.course)}</b>${meta?`<span class="tmeta">${esc(meta)}</span>`:''}
+     <div class="tgroup">${x.players.map(u=>`<span class="tchip${u===S.me?' me':''}">${av(u,'xs')}${esc(first(u))}</span>`).join('')}${Array.from({length:4-x.players.length},()=>`<span class="tchip open">Open</span>`).join('')}</div>
+     ${mine&&day===today()?`<button class="primary wide tstart" data-act="teestart" data-id="${esc(x.id)}">Start This Round</button>`:''}
+     <div class="tlinks"><button class="link" data-act="teeedit" data-id="${esc(x.id)}">Edit</button><button class="link" data-act="teecopy" data-id="${esc(x.id)}">Copy</button>${S.confirm==='tee:'+x.id?`<button class="link red-t" data-act="teedel" data-id="${esc(x.id)}">Confirm Delete</button><button class="link" data-act="cancelc">Keep</button>`:`<button class="link" data-act="ask" data-c="tee:${esc(x.id)}">Delete</button>`}</div>
+    </div></div>`;
   });
  });
- return h+teeForm(t,mem,who);
+ return h;
 }
 function teeForm(t,mem,who){
  if(!S.teeCoursesTried){S.teeCoursesTried=true;PICK_STATES.forEach(st=>{if(!S.statesLoaded[st])loadStateCourses(st)})} // so every course is in the list
@@ -1050,12 +1055,12 @@ function teeForm(t,mem,who){
   <label for="tctee">Tees</label>${key?`<select id="tctee"><option value="">Pick later</option>${teeOpts(key)}</select>`:`<input id="tctee" maxlength="40" placeholder="Optional, e.g. Blue">`}
   <label>Group <span class="hint" style="font-weight:400">(up to 4)</span></label><div class="pick">${mem.map(u=>`<button data-tcp="${esc(u)}" aria-pressed="${sel.includes(u)}">${esc(who(u))}</button>`).join('')}</div>
   <label for="tcnote">Note</label><input id="tcnote" maxlength="120" placeholder="Optional, e.g. Carts paid, shotgun start">
-  <div class="row" style="margin-top:14px"><button class="primary" data-act="teesave" ${S.busy?'disabled':''}>${editing?'Save Changes':'Add Tee Time'}</button>${editing?`<button data-act="teecancel">Cancel</button>`:''}</div>
-  <p class="hint">Use Copy to set up the afternoon round with the same group.</p></div>`;
+  <div class="row" style="margin-top:14px"><button class="primary" data-act="teesave" ${S.busy?'disabled':''}>${editing?'Save Changes':'Add Tee Time'}</button><button data-act="teecancel">Cancel</button></div>
+  <p class="hint">Tip: Copy a morning tee time to set up the afternoon round with the same group.</p></div>`;
 }
 // Put a tee time's details into the form (after render, so they aren't overwritten).
 function fillTeeForm(x,copy){
- S.tcSel=[...x.players];S.tcKey=x.course_key&&COURSES[x.course_key]?x.course_key:courseKeyByName(x.course);S.tcDay=x.day;S.teeEdit=copy?null:x.id;render();
+ S.tcSel=[...x.players];S.tcKey=x.course_key&&COURSES[x.course_key]?x.course_key:courseKeyByName(x.course);S.tcDay=x.day;S.teeEdit=copy?null:x.id;S.teeFormOpen=true;render();
  const set=(id,v)=>{const el=$(id);if(el)el.value=v||''};
  set('#tcday',x.day);set('#tctime',copy?'':(x.time||'').slice(0,5));set('#tccourse',x.course);set('#tctee',x.tee);set('#tcnote',x.note);
  const f=$('#teeform');if(f)f.scrollIntoView({block:'start',behavior:'smooth'});
@@ -1070,9 +1075,8 @@ async function saveTee(t){
  S.busy=false;
  if(error){render();return fail(error,'Couldn’t save the tee time.')}
  toast(S.teeEdit?'Tee time updated':'Tee time added');
- S.teeEdit=null;S.tcSel=null;S.tcKey=null;
+ S.teeEdit=null;S.tcSel=null;S.tcKey=null;S.teeFormOpen=false;
  await loadAll();
- ['#tctime','#tccourse','#tctee','#tcnote'].forEach(id=>{const el=$(id);if(el)el.value=''});
 }
 // Start the round for a tee time you're in: course, tees and your friends in the group.
 function startTee(x){
@@ -1859,11 +1863,12 @@ document.addEventListener('click',async e=>{
  if(d.lbcat){S.lbCat=d.lbcat;return render()}
  if(d.viewphoto){S.photoView=d.viewphoto;return render()}
  if(d.tfilter){S.tripsFilter=d.tfilter;rememberPlace();return render()}
- if(d.ttab){S.tripTabs[S.arg]=d.ttab;rememberPlace();S.confirm=null;S.receiptView=null;S.teeEdit=null;return render()}
+ if(d.ttab){S.tripTabs[S.arg]=d.ttab;rememberPlace();S.confirm=null;S.receiptView=null;S.teeEdit=null;S.teeFormOpen=false;return render()}
  if(d.tcat){S.tripCat=d.tcat;return render()}
  if(d.tcp){const s=new Set(S.tcSel||[S.me]);if(s.has(d.tcp))s.delete(d.tcp);else{if(s.size>=4)return toast('A group is 4 players.');s.add(d.tcp)}S.tcSel=[...s];return render()}
  if(a==='teesave'){const t=curTrip();if(t)saveTee(t);return}
- if(a==='teecancel'){S.teeEdit=null;S.tcSel=null;S.tcKey=null;render();['#tctime','#tccourse','#tctee','#tcnote'].forEach(id=>{const el=$(id);if(el)el.value=''});return}
+ if(a==='teeopen'){S.teeEdit=null;S.tcSel=null;S.tcKey=null;S.teeFormOpen=true;render();['#tctime','#tccourse','#tctee','#tcnote'].forEach(id=>{const el=$(id);if(el)el.value=''});const f=$('#teeform');if(f)f.scrollIntoView({block:'start',behavior:'smooth'});return}
+ if(a==='teecancel'){S.teeEdit=null;S.tcSel=null;S.tcKey=null;S.teeFormOpen=false;return render()}
  if(a==='teeedit'||a==='teecopy'){const t=curTrip(),x=t&&(S.teeTimes[t.id]||[]).find(y=>y.id===d.id);if(x)fillTeeForm(x,a==='teecopy');return}
  if(a==='teedel'){S.confirm=null;const {error}=await sb.from('tee_times').delete().eq('id',d.id);if(error)return fail(error,'Couldn’t delete the tee time.');toast('Tee time deleted');return loadAll()}
  if(a==='teestart'){const t=curTrip(),x=t&&(S.teeTimes[t.id]||[]).find(y=>y.id===d.id);if(x)startTee(x);return}
