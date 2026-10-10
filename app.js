@@ -195,14 +195,13 @@ async function loadTrips(profiles,friendsAndMe){
    const x=await sb.from('expenses').select('*').in('trip_id',tripIds).order('created_at',{ascending:false});
    if(x.error)console.error(x.error);else expenses=x.data||[];
   }
-  // Tee times and live scores (optional: older databases won't have them).
-  S.teeTimes={};S.live={};
+  // Tee times (optional: older databases won't have them).
+  S.teeTimes={};
   if(tripIds.length){
    const tt=await sb.from('tee_times').select('*').in('trip_id',tripIds);
    if(!tt.error)(tt.data||[]).forEach(x=>(S.teeTimes[x.trip_id]=S.teeTimes[x.trip_id]||[]).push(x));
-   const lv=await sb.from('live_scores').select('*').in('trip_id',tripIds);
-   if(!lv.error)(lv.data||[]).forEach(x=>(S.live[x.trip_id]=S.live[x.trip_id]||[]).push(x));
   }
+  await loadLive();
   const exBy={};expenses.forEach(e=>(exBy[e.trip_id]=exBy[e.trip_id]||[]).push({...e,amount:+e.amount}));
   S.expenses=exBy;
   const members={};(tm||[]).forEach(x=>(members[x.trip_id]=members[x.trip_id]||[]).push(x.user_id));
@@ -454,7 +453,7 @@ function roundItem(r,showWho=true){
   <div class="score"><b>${r.score}</b><span>${r.complete?rel(r.score-r.parPlayed):r.holesPlayed+' holes'}</span></div></button>`;
 }
 /* ---------- settings ---------- */
-const APP_VERSION='v49';
+const APP_VERSION='v50';
 const GEAR=`<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.86a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1Z"/></svg>`;
 // Settings: grouped like a phone's settings app. Profile, Payments, Account, About.
 function settingsView(){
@@ -536,6 +535,7 @@ const PUSH_CATS=[
  ['board','Betting Board','New bets from friends, wins and losses'],
  ['money','Money','Trip settle-ups and “you owe me” reminders'],
  ['titles','Leaderboard Titles','When you win or lose a title'],
+ ['follow','Friends’ Rounds','When a friend tees off and when they post a score'],
  ['trips','Trip Tee Times','Added to a group, tee time changes, and a reminder the night before'],
 ];
 const isIOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
@@ -705,6 +705,7 @@ function leadersView(){
 function feedView(){
  const rs=allFeedRounds().slice(0,80);
  let h=header('Feed');
+ h+=onCourseCard();
  const inc=incoming().length;
  if(inc)h+=`<button class="card item note" data-nav="friends"><div class="mid"><b>${inc} friend request${inc>1?'s':''}</b><span>Tap to review</span></div></button>`;
  const waiting=S.board.filter(needsMyPick).length;
@@ -1162,14 +1163,31 @@ function tripStandings(t,mem,who){
   :`<p class="hint" style="margin:0">No finished trip rounds yet.</p>`}</div>`;
  return h;
 }
-// Keep the trip's live scores current for the round being played (if it's on a trip you're on).
+// Live scores: where everyone mid-round stands (supabase/teetimes.sql, follow.sql). Your
+// friends see yours on their Feed; on a trip, everyone on the trip sees them on its Leaderboard.
+// S.liveAll is every row you can see; S.live groups the trip ones by trip.
+async function loadLive(){
+ try{
+  const {data,error}=await sb.from('live_scores').select('*');if(error)return false;
+  const before=JSON.stringify(S.liveAll||[]);
+  S.liveAll=(data||[]).filter(x=>Date.now()-Date.parse(x.updated_at)<8*3600e3);S.live={};
+  S.liveAll.forEach(x=>{if(x.trip_id)(S.live[x.trip_id]=S.live[x.trip_id]||[]).push(x)});
+  return JSON.stringify(S.liveAll)!==before;
+ }catch(e){return false}
+}
+function onCourseCard(){
+ const list=(S.liveAll||[]).filter(x=>x.user_id!==S.me&&(isFriend(x.user_id)||x.trip_id)).sort((a,b)=>a.to_par-b.to_par||b.thru-a.thru);
+ if(!list.length)return '';
+ return `<h2>On the Course Now <span class="livedot" aria-hidden="true"></span></h2><div class="card"><table><tbody>${list.map(x=>`<tr><td><button class="plain namelink" data-player="${esc(x.user_id)}">${withPic(x.user_id,handle(x.user_id))}</button><span class="dwhere">${esc(x.course)}</span></td><td class="n">${x.thru?rel(x.to_par):'–'}<span class="dwhere">${x.thru?(x.thru===x.holes?'finishing':'thru '+x.thru):'teeing off'}</span></td></tr>`).join('')}</tbody></table><p class="hint">Live as they enter scores.</p></div>`;
+}
+// Keep live scores current for the round being played (linked to a trip if it's on one you're on).
 let liveT=0;
 async function liveSync(){
  if(!draft||!sb||!S.me||!navigator.onLine)return;
- const t=S.trips.find(x=>!x.ended_at&&draft.date>=x.start_date&&draft.date<=x.end_date&&(S.tripMembers[x.id]||[]).includes(S.me));if(!t)return;
- const mem=S.tripMembers[t.id]||[],n=draft.holes.length;
- const row=(id,uid,holes)=>{const ph=holes.filter(played);return{round_id:id,trip_id:t.id,user_id:uid,entered_by:S.me,course:draft.course.slice(0,80),thru:ph.length,holes:n,to_par:ph.reduce((a,h)=>a+h.score-h.par,0),score:ph.reduce((a,h)=>a+h.score,0),updated_at:new Date().toISOString()}};
- const rows=[row(draft.id,S.me,draft.holes),...(draft.others||[]).filter(o=>mem.includes(o.uid)).map(o=>row(o.id,o.uid,o.holes))];
+ const t=S.trips.find(x=>!x.ended_at&&draft.date>=x.start_date&&draft.date<=x.end_date&&(S.tripMembers[x.id]||[]).includes(S.me));
+ const mem=t?S.tripMembers[t.id]||[]:[],n=draft.holes.length;
+ const row=(id,uid,holes)=>{const ph=holes.filter(played);return{round_id:id,trip_id:t&&mem.includes(uid)?t.id:null,user_id:uid,entered_by:S.me,course:draft.course.slice(0,80),thru:ph.length,holes:n,to_par:ph.reduce((a,h)=>a+h.score-h.par,0),score:ph.reduce((a,h)=>a+h.score,0),updated_at:new Date().toISOString()}};
+ const rows=[row(draft.id,S.me,draft.holes),...(draft.others||[]).filter(o=>isFriend(o.uid)).map(o=>row(o.id,o.uid,o.holes))];
  try{const {error}=await sb.from('live_scores').upsert(rows);if(error)console.error(error)}catch(e){}
 }
 function liveSoon(){clearTimeout(liveT);liveT=setTimeout(liveSync,1500)}
@@ -2101,8 +2119,13 @@ document.addEventListener('keydown',e=>{
 });
 
 /* ---------- start up ---------- */
-// The trip leaderboard refreshes every minute while it's open, for live scores.
-setInterval(()=>{const t=S.view==='trip'&&curTrip();if(t&&(S.tripTabs[t.id]||'')==='standings'&&document.visibilityState==='visible'&&S.status==='ready'&&!S.busy)loadAll()},60000);
+// Live scores refresh every 15 seconds while the Feed or a trip Leaderboard is open
+// (just the live rows; the screen redraws only when something changed).
+setInterval(async()=>{
+ const t=S.view==='trip'&&curTrip(),watching=S.view==='feed'||t&&(S.tripTabs[t.id]||'')==='standings';
+ if(!watching||document.visibilityState!=='visible'||S.status!=='ready'||S.busy||!sb)return;
+ if(await loadLive()&&!document.activeElement.matches('input,textarea'))render();
+},15000);
 window.addEventListener('online',()=>{if(S.status==='ready'){flushOutbox();if(S.offline)loadAll()}});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&S.status==='ready'&&!S.busy)loadAll()});
 if('serviceWorker' in navigator&&location.protocol==='https:'){
