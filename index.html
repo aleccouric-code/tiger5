@@ -120,6 +120,14 @@ ul.paid .link{margin-left:auto}
 .gmatch{display:flex;flex-direction:column;gap:1px;margin-top:8px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px}
 .gopts{align-items:flex-end}
 .gopts .toggle{margin:0}
+.tee.mine{border-color:var(--gold);box-shadow:inset 3px 0 0 var(--gold)}
+.tcourse{color:var(--mute);font-size:14px;text-align:right;min-width:0}
+.tplayers{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin-top:8px}
+.tact{margin-top:10px;flex-wrap:wrap}
+.tact button{flex:1 1 auto}
+.livedot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--red);vertical-align:middle;margin-left:4px}
+@media (prefers-reduced-motion:no-preference){.livedot{animation:livepulse 1.6s ease-in-out infinite}}
+@keyframes livepulse{50%{opacity:.35}}
 .setat{flex:none;font-weight:700;color:var(--mute)}
 button.setrow{border-radius:0}
 .idx{flex:none;width:62px;height:62px;border-radius:50%;border:2px solid var(--green);background:var(--card);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:0;min-height:0}

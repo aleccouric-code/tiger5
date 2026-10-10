@@ -195,6 +195,14 @@ async function loadTrips(profiles,friendsAndMe){
    const x=await sb.from('expenses').select('*').in('trip_id',tripIds).order('created_at',{ascending:false});
    if(x.error)console.error(x.error);else expenses=x.data||[];
   }
+  // Tee times and live scores (optional: older databases won't have them).
+  S.teeTimes={};S.live={};
+  if(tripIds.length){
+   const tt=await sb.from('tee_times').select('*').in('trip_id',tripIds);
+   if(!tt.error)(tt.data||[]).forEach(x=>(S.teeTimes[x.trip_id]=S.teeTimes[x.trip_id]||[]).push(x));
+   const lv=await sb.from('live_scores').select('*').in('trip_id',tripIds);
+   if(!lv.error)(lv.data||[]).forEach(x=>(S.live[x.trip_id]=S.live[x.trip_id]||[]).push(x));
+  }
   const exBy={};expenses.forEach(e=>(exBy[e.trip_id]=exBy[e.trip_id]||[]).push({...e,amount:+e.amount}));
   S.expenses=exBy;
   const members={};(tm||[]).forEach(x=>(members[x.trip_id]=members[x.trip_id]||[]).push(x.user_id));
@@ -444,7 +452,7 @@ function roundItem(r,showWho=true){
   <div class="score"><b>${r.score}</b><span>${r.complete?rel(r.score-r.parPlayed):r.holesPlayed+' holes'}</span></div></button>`;
 }
 /* ---------- settings ---------- */
-const APP_VERSION='v42';
+const APP_VERSION='v43';
 const GEAR=`<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.86a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1Z"/></svg>`;
 // Settings: grouped like a phone's settings app. Profile, Payments, Account, About.
 function settingsView(){
@@ -488,6 +496,7 @@ const PUSH_CATS=[
  ['board','Betting Board','New bets from friends, wins and losses'],
  ['money','Money','Trip settle-ups and “you owe me” reminders'],
  ['titles','Leaderboard Titles','When you win or lose a title'],
+ ['trips','Trip Tee Times','When you’re put in a group or a tee time changes'],
 ];
 const isIOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const standalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
@@ -879,14 +888,14 @@ function expenseTotals(t){
 }
 // Bets and receipts settle separately: each returns everyone's net and the
 // fewest payments that square that ledger.
-function settleBets(t){
+function settleBets(t,raw){ // raw: as played, before payments
  const mem=S.tripMembers[t.id]||[],net={};mem.forEach(u=>net[u]=0);
  (S.bets[t.id]||[]).forEach(b=>{
   const w=betWinners(t,b),stake=+b.stake||0;if(!w.length||!stake)return;
   mem.forEach(u=>net[u]-=stake);
   const share=stake*mem.length/w.length;w.forEach(u=>net[u]+=share);
  });
- applyPaid(net,'bets',t.id);
+ if(!raw)applyPaid(net,'bets',t.id);
  return{net,pays:fewestPayments(net)};
 }
 function settleReceipts(t){
@@ -940,10 +949,10 @@ function tripView(id){
  const who=(u)=>u===S.me?'You':handle(u);
  let h=header(t.name,fmtRange(t));
  // One section at a time, picked from a row of buttons (remembered per trip).
- const tab=S.tripTabs[t.id]||'bets',exN=(S.expenses[t.id]||[]).length;
+ const tab=S.tripTabs[t.id]||(st==='done'?'standings':'tee'),exN=(S.expenses[t.id]||[]).length;
  const rs=mem.flatMap(u=>tripRounds(t,u)).sort((a,b)=>b.date.localeCompare(a.date)||(b.at||0)-(a.at||0));
  const beersTot=mem.reduce((a,u)=>a+allTripRounds(t,u).reduce((x,r)=>x+holeSum(r,'beer'),0),0),gbTot=mem.reduce((a,u)=>a+allTripRounds(t,u).reduce((x,r)=>x+holeSum(r,'gb'),0),0);
- const tabs=[['bets','Bets',bets.length],['receipts','Receipts',exN],['beers','Beers 🍺',beersTot],['gb','Rips 💨',gbTot],['rounds','Rounds',rs.length],['players','Players',mem.length]];
+ const tabs=[['tee','Tee Times',(S.teeTimes&&S.teeTimes[t.id]||[]).length],['standings','Leaderboard',0],['bets','Bets',bets.length],['receipts','Receipts',exN],['beers','Beers 🍺',beersTot],['gb','Rips 💨',gbTot],['rounds','Rounds',rs.length],['players','Players',mem.length]];
  // Ending a trip: the organizer can end it early (later rounds stop counting and settle-up is final).
  if(st==='done')h+=`<div class="card note item" style="margin-bottom:12px"><div class="mid"><b>Trip Completed</b><span>${t.ended_at?'Ended '+fmtDate(t.end_date)+'. ':''}Bets and settle-ups are final.</span></div>${owner&&t.ended_at?`<button data-act="reopentrip">Reopen</button>`:''}</div>`;
  else if(owner)h+=S.confirm==='endtrip'?`<div class="card note" style="margin-bottom:12px"><p style="margin-top:0">End the trip now? Rounds posted after today won’t count toward bets, and settle-ups become final.</p><div class="row"><button class="danger" data-act="endtrip">End Trip</button><button data-act="cancelc">Not yet</button></div></div>`
@@ -980,6 +989,8 @@ function tripView(id){
  <button class="primary wide" style="margin-top:14px" data-act="addbet" ${S.busy?'disabled':''}>Add Bet</button></div>`;
  }
 
+ if(tab==='tee')h+=teeSheet(t,mem,who);
+ if(tab==='standings')h+=tripStandings(t,mem,who);
  if(tab==='receipts')h+=expensesSection(t,mem,who);
  if(tab==='beers')h+=extrasBoard(t,'beer','🍺','beer','beers');
  if(tab==='gb')h+=extrasBoard(t,'gb','💨','rip','rips');
@@ -1006,6 +1017,119 @@ function tripView(id){
  }
  return h;
 }
+
+/* ---------- trip tee times ---------- */
+// Each tee time is one group (up to 4) at a time and course on a trip day (supabase/teetimes.sql).
+const fmtTime=(s)=>{const [h,m]=(s||'').split(':').map(Number);if(isNaN(h))return '';return `${(h%12)||12}:${String(m||0).padStart(2,'0')} ${h<12?'AM':'PM'}`};
+const fmtDay=(s)=>{const [y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'})};
+const tripDays=(t)=>{const out=[],[y,m,d]=t.start_date.split('-').map(Number),dt=new Date(y,m-1,d);while(isoDate(dt)<=t.end_date&&out.length<31){out.push(isoDate(dt));dt.setDate(dt.getDate()+1)}return out};
+const courseKeyByName=(name)=>Object.keys(COURSES).find(k=>COURSES[k].name.toLowerCase()===(name||'').trim().toLowerCase())||null;
+function teeSheet(t,mem,who){
+ const list=(S.teeTimes[t.id]||[]).slice().sort((a,b)=>(a.day+a.time).localeCompare(b.day+b.time));
+ let h='';
+ if(!list.length)h+=`<div class="card empty"><b>No Tee Times Yet</b>Plan each day’s groups below. Everyone you put in a group gets a notification.</div>`;
+ [...new Set(list.map(x=>x.day))].forEach(day=>{
+  h+=`<h2>${esc(fmtDay(day))}${day===today()?' · Today':''}</h2>`;
+  list.filter(x=>x.day===day).forEach(x=>{
+   const mine=x.players.includes(S.me),open=4-x.players.length;
+   h+=`<div class="card tee${mine?' mine':''}"><div class="bet-head"><b>${esc(fmtTime(x.time))}</b><span class="tcourse">${esc(x.course)}${x.tee?' · '+esc(x.tee):''}</span></div>
+    <div class="tplayers">${x.players.map(u=>withPic(u,who(u))).join('')}${open>0?`<span class="hint" style="margin:0">${open} open spot${open===1?'':'s'}</span>`:''}</div>
+    ${x.note?`<p class="hint" style="margin:6px 0 0">${esc(x.note)}</p>`:''}
+    <div class="row tact">${mine&&day===today()?`<button class="primary" data-act="teestart" data-id="${esc(x.id)}">Start This Round</button>`:''}<button data-act="teeedit" data-id="${esc(x.id)}">Edit</button><button data-act="teecopy" data-id="${esc(x.id)}">Copy</button>${S.confirm==='tee:'+x.id?`<button class="danger" data-act="teedel" data-id="${esc(x.id)}">Delete</button>`:`<button class="link" data-act="ask" data-c="tee:${esc(x.id)}">Delete</button>`}</div></div>`;
+  });
+ });
+ return h+teeForm(t,mem,who);
+}
+function teeForm(t,mem,who){
+ if(!S.teeCoursesTried){S.teeCoursesTried=true;PICK_STATES.forEach(st=>{if(!S.statesLoaded[st])loadStateCourses(st)})} // so every course is in the list
+ const sel=S.tcSel||[S.me],key=S.tcKey&&COURSES[S.tcKey]?S.tcKey:null,days=tripDays(t),editing=S.teeEdit;
+ return `<div class="card" id="teeform"><b>${editing?'Edit Tee Time':'Add a Tee Time'}</b>
+  <div class="row"><div><label for="tcday">Day</label><select id="tcday">${days.map(d=>`<option value="${d}" ${d===(S.tcDay||days.find(x=>x>=today())||days[0])?'selected':''}>${esc(fmtDay(d))}</option>`).join('')}</select></div>
+   <div><label for="tctime">Time</label><input id="tctime" type="time" step="300"></div></div>
+  <label for="tccourse">Course</label><input id="tccourse" list="tccourses" maxlength="80" autocomplete="off" placeholder="Start typing a course"><datalist id="tccourses">${Object.values(COURSES).map(c=>`<option value="${esc(c.name)}">`).join('')}</datalist>
+  <label for="tctee">Tees</label>${key?`<select id="tctee"><option value="">Pick later</option>${teeOpts(key)}</select>`:`<input id="tctee" maxlength="40" placeholder="Optional, e.g. Blue">`}
+  <label>Group <span class="hint" style="font-weight:400">(up to 4)</span></label><div class="pick">${mem.map(u=>`<button data-tcp="${esc(u)}" aria-pressed="${sel.includes(u)}">${esc(who(u))}</button>`).join('')}</div>
+  <label for="tcnote">Note</label><input id="tcnote" maxlength="120" placeholder="Optional, e.g. Carts paid, shotgun start">
+  <div class="row" style="margin-top:14px"><button class="primary" data-act="teesave" ${S.busy?'disabled':''}>${editing?'Save Changes':'Add Tee Time'}</button>${editing?`<button data-act="teecancel">Cancel</button>`:''}</div>
+  <p class="hint">Use Copy to set up the afternoon round with the same group.</p></div>`;
+}
+// Put a tee time's details into the form (after render, so they aren't overwritten).
+function fillTeeForm(x,copy){
+ S.tcSel=[...x.players];S.tcKey=x.course_key&&COURSES[x.course_key]?x.course_key:courseKeyByName(x.course);S.tcDay=x.day;S.teeEdit=copy?null:x.id;render();
+ const set=(id,v)=>{const el=$(id);if(el)el.value=v||''};
+ set('#tcday',x.day);set('#tctime',copy?'':(x.time||'').slice(0,5));set('#tccourse',x.course);set('#tctee',x.tee);set('#tcnote',x.note);
+ const f=$('#teeform');if(f)f.scrollIntoView({block:'start',behavior:'smooth'});
+}
+async function saveTee(t){
+ const course=$('#tccourse').value.trim(),time=$('#tctime').value,day=$('#tcday').value,players=(S.tcSel||[]).filter(u=>(S.tripMembers[t.id]||[]).includes(u)).slice(0,4);
+ if(!time)return toast('Pick a tee time.');
+ if(!course)return toast('Pick a course.');
+ const key=courseKeyByName(course),row={trip_id:t.id,day,time,course,course_key:key,tee:$('#tctee').value.trim()||null,players,note:$('#tcnote').value.trim()||null};
+ S.busy=true;render();
+ const {error}=S.teeEdit?await sb.from('tee_times').update(row).eq('id',S.teeEdit):await sb.from('tee_times').insert(row);
+ S.busy=false;
+ if(error){render();return fail(error,'Couldn’t save the tee time.')}
+ toast(S.teeEdit?'Tee time updated':'Tee time added');
+ S.teeEdit=null;S.tcSel=null;S.tcKey=null;
+ await loadAll();
+ ['#tctime','#tccourse','#tctee','#tcnote'].forEach(id=>{const el=$(id);if(el)el.value=''});
+}
+// Start the round for a tee time you're in: course, tees and your friends in the group.
+function startTee(x){
+ if(draft)return toast('Finish or discard the round you’re playing first.');
+ const others=x.players.filter(u=>u!==S.me),notFriends=others.filter(u=>!isFriend(u));
+ S.courseKey=x.course_key&&COURSES[x.course_key]?x.course_key:courseKeyByName(x.course)||'';S.withSel=others.filter(isFriend).slice(0,3);S.nsel='18';S.picking=false;
+ playView='start';go('play');
+ if(!S.courseKey){const c=$('#cname');if(c)c.value=x.course}
+ const tee=$('#tee');if(tee&&x.tee&&S.courseKey&&COURSES[S.courseKey].tees[x.tee]){tee.value=x.tee;syncStart(true)}
+ if(notFriends.length)toast('To score '+notFriends.map(handle).join(', ')+', add them as friends first.');
+}
+
+/* ---------- trip leaderboard ---------- */
+// Standings for the trip from finished rounds, plus where everyone on the course stands
+// right now (live_scores, updated by whoever's keeping score).
+const TRIP_CATS=[
+ {k:'topar',label:'To Par',low:true,fmt:rel,val:rs=>rs.length?rs.reduce((a,r)=>a+r.score-r.parPlayed,0):null,note:'Total strokes over par across finished trip rounds.'},
+ {k:'net',label:'Net To Par',low:true,fmt:rel,val:rs=>{const f=rs.filter(r=>r.net!=null);return f.length?f.reduce((a,r)=>a+r.net-r.parPlayed,0):null},note:'After handicap strokes, across rounds with a rating and slope.'},
+ {k:'avg',label:'Avg 18',low:true,fmt:v=>v.toFixed(1),val:rs=>{const f=rs.filter(r=>r.n===18);return f.length?Math.round(f.reduce((a,r)=>a+r.score,0)/f.length*10)/10:null},note:'Average 18-hole score on the trip.'},
+ {k:'money',label:'Money',fmt:v=>(v>0?'+':v<0?'−':'')+fmtMoney(v),money:true,note:'Trip bets as they stand now, plus Skins and Nassau won on trip rounds.'},
+ {k:'birdies',label:'Birdies',val:rs=>rs.reduce((a,r)=>a+(r.holes||[]).filter(h=>played(h)&&h.score<h.par).length,0),note:'Birdies or better.'},
+ {k:'t5',label:'Tiger 5',low:true,fmt:v=>v.toFixed(1),val:rs=>per18(rs,r=>r.t5),note:'Tiger 5 misses per 18 holes.'},
+ {k:'putts',label:'Putts',low:true,fmt:v=>v.toFixed(1),val:rs=>per18(rs.filter(r=>r.putts!=null),r=>r.putts),note:'Putts per 18 holes.'},
+ {k:'beer',label:'🍺 Beers',all:true,val:rs=>rs.reduce((a,r)=>a+holeSum(r,'beer'),0),note:'Beers logged on trip rounds.'},
+ {k:'gb',label:'💨 Rips',all:true,val:rs=>rs.reduce((a,r)=>a+holeSum(r,'gb'),0),note:'Rips logged on trip rounds.'},
+];
+function tripMoney(t){
+ const mem=S.tripMembers[t.id]||[],out={},bets=settleBets(t,true).net;
+ mem.forEach(u=>{out[u]=(bets[u]||0)+allTripRounds(t,u).reduce((a,r)=>a+(r.games&&r.games.done&&r.games.net?(+r.games.net[u]||0):0),0)});
+ return out;
+}
+function tripStandings(t,mem,who){
+ let h='';
+ const live=(S.live[t.id]||[]).filter(x=>Date.now()-Date.parse(x.updated_at)<8*3600e3).sort((a,b)=>a.to_par-b.to_par||b.thru-a.thru);
+ if(live.length)h+=`<h2>On the Course <span class="livedot" aria-hidden="true"></span></h2><div class="card"><table><tbody>${live.map(x=>`<tr><td>${withPic(x.user_id,who(x.user_id))}<span class="dwhere">${esc(x.course)}</span></td><td class="n">${rel(x.to_par)}<span class="dwhere">${x.thru?(x.thru===x.holes?'finishing':'thru '+x.thru):'starting'}</span></td></tr>`).join('')}</tbody></table><p class="hint">Updates as each group enters scores.</p></div>`;
+ const cat=TRIP_CATS.find(c=>c.k===S.tripCat)||TRIP_CATS[0],money=cat.money?tripMoney(t):null;
+ const rows=mem.map(u=>{const rs=cat.all?allTripRounds(t,u):tripRounds(t,u);return{u,n:tripRounds(t,u).length,v:money?Math.round(money[u]*100)/100:cat.val(rs)}});
+ const ranked=rows.filter(r=>r.v!=null).sort((a,b)=>cat.low?a.v-b.v:b.v-a.v),none=rows.filter(r=>r.v==null),fmt=cat.fmt||String,medal=['🥇','🥈','🥉'];
+ h+=`<h2>Trip Standings</h2><div class="lbcats" role="tablist" aria-label="Category">${TRIP_CATS.map(c=>`<button role="tab" data-tcat="${c.k}" aria-selected="${c===cat}">${c.label}</button>`).join('')}</div>`;
+ let rank=0,prev=null;
+ h+=`<div class="card"><p class="hint" style="margin:0 0 8px">${esc(cat.note)}</p>${ranked.length?`<table class="lbtable"><tbody>${ranked.map((r,i)=>{if(r.v!==prev){rank=i+1;prev=r.v}
+  return `<tr class="${r.u===S.me?'mine':''}"><td class="lbrank">${rank<=3&&(cat.low||r.v>0)?medal[rank-1]:rank}</td><td><button class="plain namelink" data-player="${esc(r.u)}">${withPic(r.u,who(r.u))}</button><span class="dwhere">${r.n} round${r.n===1?'':'s'}</span></td><td class="n ${money?(r.v>0?'pos':r.v<0?'neg':''):''}">${esc(fmt(r.v))}</td></tr>`}).join('')}${none.map(r=>`<tr><td class="lbrank">–</td><td>${withPic(r.u,who(r.u))}</td><td class="n hint">—</td></tr>`).join('')}</tbody></table>`
+  :`<p class="hint" style="margin:0">No finished trip rounds yet.</p>`}</div>`;
+ return h;
+}
+// Keep the trip's live scores current for the round being played (if it's on a trip you're on).
+let liveT=0;
+async function liveSync(){
+ if(!draft||!sb||!S.me||!navigator.onLine)return;
+ const t=S.trips.find(x=>!x.ended_at&&draft.date>=x.start_date&&draft.date<=x.end_date&&(S.tripMembers[x.id]||[]).includes(S.me));if(!t)return;
+ const mem=S.tripMembers[t.id]||[],n=draft.holes.length;
+ const row=(id,uid,holes)=>{const ph=holes.filter(played);return{round_id:id,trip_id:t.id,user_id:uid,entered_by:S.me,course:draft.course.slice(0,80),thru:ph.length,holes:n,to_par:ph.reduce((a,h)=>a+h.score-h.par,0),score:ph.reduce((a,h)=>a+h.score,0),updated_at:new Date().toISOString()}};
+ const rows=[row(draft.id,S.me,draft.holes),...(draft.others||[]).filter(o=>mem.includes(o.uid)).map(o=>row(o.id,o.uid,o.holes))];
+ try{const {error}=await sb.from('live_scores').upsert(rows);if(error)console.error(error)}catch(e){}
+}
+function liveSoon(){clearTimeout(liveT);liveT=setTimeout(liveSync,1500)}
+async function liveClear(ids){try{if(sb&&ids.length)await sb.from('live_scores').delete().in('round_id',ids)}catch(e){}}
 
 // Every round posted during the trip, finished or not (for beer and rip totals).
 const allTripRounds=(t,uid)=>(S.rounds[uid]||[]).filter(r=>r.date>=t.start_date&&r.date<=t.end_date);
@@ -1596,6 +1720,7 @@ async function postRound(){
  const ids=rows.map(r=>r.id);
  LS.set(OUTKEY,[...LS.get(OUTKEY,[]).filter(r=>!ids.includes(r.id)),...rows]);
  rows.forEach(row=>(S.rounds[row.user_id]=S.rounds[row.user_id]||[]).unshift(fromRow({...row,created_at:new Date().toISOString(),_pending:true})));
+ clearTimeout(liveT);liveClear(ids); // the round is posting, so it's no longer "on the course"
  draft=null;saveDraft();playView='start';cacheSave();
  go('feed');
  if(!navigator.onLine)return toast('Saved. It posts when you have signal.');
@@ -1696,7 +1821,14 @@ document.addEventListener('click',async e=>{
  if(d.lbcat){S.lbCat=d.lbcat;return render()}
  if(d.viewphoto){S.photoView=d.viewphoto;return render()}
  if(d.tfilter){S.tripsFilter=d.tfilter;rememberPlace();return render()}
- if(d.ttab){S.tripTabs[S.arg]=d.ttab;rememberPlace();S.confirm=null;S.receiptView=null;return render()}
+ if(d.ttab){S.tripTabs[S.arg]=d.ttab;rememberPlace();S.confirm=null;S.receiptView=null;S.teeEdit=null;return render()}
+ if(d.tcat){S.tripCat=d.tcat;return render()}
+ if(d.tcp){const s=new Set(S.tcSel||[S.me]);if(s.has(d.tcp))s.delete(d.tcp);else{if(s.size>=4)return toast('A group is 4 players.');s.add(d.tcp)}S.tcSel=[...s];return render()}
+ if(a==='teesave'){const t=curTrip();if(t)saveTee(t);return}
+ if(a==='teecancel'){S.teeEdit=null;S.tcSel=null;S.tcKey=null;render();['#tctime','#tccourse','#tctee','#tcnote'].forEach(id=>{const el=$(id);if(el)el.value=''});return}
+ if(a==='teeedit'||a==='teecopy'){const t=curTrip(),x=t&&(S.teeTimes[t.id]||[]).find(y=>y.id===d.id);if(x)fillTeeForm(x,a==='teecopy');return}
+ if(a==='teedel'){S.confirm=null;const {error}=await sb.from('tee_times').delete().eq('id',d.id);if(error)return fail(error,'Couldn’t delete the tee time.');toast('Tee time deleted');return loadAll()}
+ if(a==='teestart'){const t=curTrip(),x=t&&(S.teeTimes[t.id]||[]).find(y=>y.id===d.id);if(x)startTee(x);return}
  if(d.expaid){S.exPaidBy=d.expaid;return render()}
  if(d.exsplit){const t=curTrip(),mem=t?S.tripMembers[t.id]||[]:[];const s=new Set(S.exSplit||mem);s.has(d.exsplit)?s.delete(d.exsplit):s.add(d.exsplit);S.exSplit=mem.filter(u=>s.has(u));return render()}
  if(d.player)return go('player',d.player);
@@ -1835,7 +1967,7 @@ document.addEventListener('click',async e=>{
   S.withSel=[];S.scPaths=null;hidx=0;playView='hole';saveDraft();return render();
  }
  if(a==='post')return postRound();
- if(a==='discard'){draft=null;saveDraft();playView='start';S.confirm=null;return render()}
+ if(a==='discard'){liveClear([draft.id,...(draft.others||[]).map(o=>o.id)]);draft=null;saveDraft();playView='start';S.confirm=null;return render()}
  if(a==='back'){playView='hole';S.confirm=null;return render()}
  if(a==='tosum'){playView='sum';return render()}
  if(!draft)return;
@@ -1857,12 +1989,14 @@ document.addEventListener('click',async e=>{
  else if(a==='prev'){S.puttsNag=false;hidx--}
  else if(a==='next'){if(needPutts())return;S.puttsNag=false;everyone().forEach(hs=>{if(hs[hidx].score==null)hs[hidx].score=hs[hidx].par});if(hidx===draft.holes.length-1)playView='sum';else hidx++}
  else return;
- saveDraft();render();
+ saveDraft();render();liveSoon();
 });
 document.addEventListener('change',e=>{
  const id=e.target.id;
  if(id==='course'){const v=e.target.value,t=$('#tee');t.innerHTML=v?teeOpts(v):'<option value="">n/a</option>';t.disabled=!v;$('#otherWrap').hidden=!!v;const rs=v?teeRS(v,t.value):{r:'',s:''};$('#rating').value=rs.r;$('#slope').value=rs.s;updateCH()}
  if(id==='bkind'){S.betKind=e.target.value;return render()}
+ if(id==='tccourse'){const k=courseKeyByName(e.target.value);if(k!==S.tcKey){S.tcKey=k;const tee=$('#tctee'),v=tee&&tee.value;render();const t2=$('#tctee');if(t2&&v&&(t2.tagName!=='SELECT'||[...t2.options].some(o=>o.value===v)))t2.value=v}return}
+ if(id==='tcday'){S.tcDay=e.target.value;return}
  if(id==='sc-front'||id==='sc-back'){const f=e.target.files&&e.target.files[0];if(f)uploadScorecard(id.slice(3),f);return}
  if(id==='avfile'){const f=e.target.files&&e.target.files[0];if(f)uploadPhoto(f);return}
  if(id==='exphoto'){const f=e.target.files&&e.target.files[0];if(f&&f.size>20e6)return toast('That file is too big. Try a smaller photo.');S.exFile=f||null;return render()}
@@ -1878,6 +2012,8 @@ document.addEventListener('keydown',e=>{
 });
 
 /* ---------- start up ---------- */
+// The trip leaderboard refreshes every minute while it's open, for live scores.
+setInterval(()=>{const t=S.view==='trip'&&curTrip();if(t&&(S.tripTabs[t.id]||'')==='standings'&&document.visibilityState==='visible'&&S.status==='ready'&&!S.busy)loadAll()},60000);
 window.addEventListener('online',()=>{if(S.status==='ready'){flushOutbox();if(S.offline)loadAll()}});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&S.status==='ready'&&!S.busy)loadAll()});
 if('serviceWorker' in navigator&&location.protocol==='https:'){
