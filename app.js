@@ -112,7 +112,7 @@ const CFG=window.TIGER5_CONFIG||{};
 const configured=!!(CFG.supabaseUrl&&CFG.supabaseAnonKey&&!/YOUR-/.test(CFG.supabaseUrl+CFG.supabaseAnonKey));
 const sb=configured&&window.supabase?window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseAnonKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}}):null;
 
-const fromRow=(r)=>({id:r.id,uid:r.user_id,course:r.course,tee:r.tee,rating:r.rating==null?null:+r.rating,slope:r.slope,date:r.date,nine:r.nine,holes:r.holes||[],n:r.n,par:r.par,parPlayed:r.par_played,score:r.score,putts:r.putts,per:r.per||{},t5:r.t5,ch:r.ch,ags:r.ags,diff:r.diff==null?null:+r.diff,complete:r.complete,net:r.net,holesPlayed:r.holes_played,at:Date.parse(r.created_at)||0,pending:!!r._pending,enteredBy:r.entered_by||null,scorecards:r.scorecards||[]});
+const fromRow=(r)=>({id:r.id,uid:r.user_id,course:r.course,tee:r.tee,rating:r.rating==null?null:+r.rating,slope:r.slope,date:r.date,nine:r.nine,holes:r.holes||[],n:r.n,par:r.par,parPlayed:r.par_played,score:r.score,putts:r.putts,per:r.per||{},t5:r.t5,ch:r.ch,ags:r.ags,diff:r.diff==null?null:+r.diff,complete:r.complete,net:r.net,holesPlayed:r.holes_played,at:Date.parse(r.created_at)||0,pending:!!r._pending,enteredBy:r.entered_by||null,scorecards:r.scorecards||[],games:r.games||null});
 function toRow(d,t,index,extra){
  return{id:d.id,user_id:S.me,course:d.course,tee:d.tee||null,rating:+d.rating||null,slope:+d.slope||null,date:d.date,nine:d.nine||null,holes:d.holes,
   n:t.n,par:t.par,par_played:t.parPlayed,score:t.score,putts:t.putts,per:t.per,t5:t.t5,ch:t.ch,ags:t.ags,diff:t.diff,complete:t.complete,net:t.net,holes_played:t.holesPlayed,index_at_post:index,...(extra||{})};
@@ -444,7 +444,7 @@ function roundItem(r,showWho=true){
   <div class="score"><b>${r.score}</b><span>${r.complete?rel(r.score-r.parPlayed):r.holesPlayed+' holes'}</span></div></button>`;
 }
 /* ---------- settings ---------- */
-const APP_VERSION='v40';
+const APP_VERSION='v41';
 const GEAR=`<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.86a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1Z"/></svg>`;
 // Settings: grouped like a phone's settings app. Profile, Payments, Account, About.
 function settingsView(){
@@ -578,8 +578,8 @@ async function sendSettleUp(id){
  const {error}=await sb.from('push_outbox').insert(rows);
  if(error)console.error(error);else toast('Settle-up sent to '+rows.length+' player'+(rows.length===1?'':'s'));
 }
-async function nudge(u,amt,trip){
- const row={recipient:u,kind:'nudge',amount:amt};if(trip)row.trip_id=trip;
+async function nudge(u,amt,trip,ledger){
+ const row={recipient:u,kind:'nudge',amount:amt};if(trip)row.trip_id=trip;else if(ledger==='board'||ledger==='games')row.ledger=ledger;
  const {error}=await sb.from('push_outbox').insert(row);
  if(error)return /already reminded/i.test(error.message||'')?toast('You already reminded '+handle(u)+' today.'):fail(error,'Couldn’t send the reminder.');
  toast('Reminder sent to '+handle(u));
@@ -812,6 +812,7 @@ function roundView(key){
  // Scorecard photos (front/back) taken when the round was started.
  if((r.scorecards||[]).length)h+=`<h2>Scorecard</h2><div class="row" style="margin-bottom:12px">${r.scorecards.map((p,i)=>`<button data-act="viewscorecard" data-path="${esc(p)}">📷 ${r.scorecards.length>1?(i?'Back':'Front'):'Scorecard'}</button>`).join('')}</div>`;
  if(S.receiptView&&S.receiptView.round===r.id)h+=`<div class="overlay" role="dialog" aria-label="Scorecard photo"><div class="row" style="flex:none"><b style="color:#fff">Scorecard</b><button data-act="closereceipt" style="flex:none">Close</button></div><img src="${esc(S.receiptView.url)}" alt="Scorecard photo"></div>`;
+ h+=gamesCard(r.games);
  if((mine||r.enteredBy===S.me)&&!r.pending)h+=S.confirm==='del'?`<div class="card note"><p style="margin-top:0">Delete this round for good? It also comes off ${mine?'your':'their'} handicap.</p><div class="row"><button class="danger" data-act="delround" data-id="${esc(r.id)}">Delete Round</button><button data-act="cancelc">Keep it</button></div></div>`:`<button class="wide" data-act="ask" data-c="del">Delete Round</button>`;
  return h;
 }
@@ -1231,6 +1232,7 @@ function unsettledCard(){
   sets.forEach(([lg,fn,lab])=>fn(t).pays.forEach(p=>{if(p.from===S.me||p.to===S.me)lines.push([p,{ledger:lg,trip:t.id,note:t.name+' '+lab.toLowerCase()+' (Sandie)',where:t.name+' · '+lab}])}));
  });
  boardBalances().forEach(([u,v])=>lines.push([v>0?{from:u,to:S.me,amt:v}:{from:S.me,to:u,amt:-v},{ledger:'board',note:'Betting Board (Sandie)',where:'Betting Board'}]));
+ gameBalances().forEach(([u,v])=>lines.push([v>0?{from:u,to:S.me,amt:v}:{from:S.me,to:u,amt:-v},{ledger:'games',note:'Skins & Nassau (Sandie)',where:'Money Games'}]));
  if(!lines.length)return '';
  const owe=lines.filter(([p])=>p.from===S.me).reduce((a,[p])=>a+p.amt,0),owed=lines.filter(([p])=>p.to===S.me).reduce((a,[p])=>a+p.amt,0);
  return `<h2>Unsettled</h2><div class="card"><div class="bet-head"><b>${[owe?'You owe '+fmtMoney(owe):'',owed?'You’re owed '+fmtMoney(owed):''].filter(Boolean).join(' · ')}</b></div>
@@ -1363,6 +1365,7 @@ function startView(){
  <label>Playing With</label>
  ${friendIds().length?`<div class="pick">${friendIds().map(f=>`<button data-withsel="${esc(f)}" aria-pressed="${(S.withSel||[]).includes(f)}">${withPic(f,handle(f))}</button>`).join('')}</div>
  <p class="hint">Pick up to 3 friends in your group. You’ll enter their scores on each hole and their rounds post to their cards.</p>`:`<p class="hint">Add friends to score your whole group.</p>`}
+ ${(S.withSel||[]).length?gamesSetup():''}
  <button class="primary wide" style="margin-top:14px" data-act="start">Start Round</button></div>
  <p class="sub">Rating and slope are on the scorecard. Without them the round still posts but won’t count toward a handicap.${ix!=null?'':' Your index appears after 3 rated rounds.'}</p>`;
 }
@@ -1432,6 +1435,7 @@ function holeView(){
   <div><label>Mushroom 🍄</label><div class="stepper sm"><button data-mush="-1" aria-label="One less mushroom">−</button><output>${h.mush||0}</output><button data-mush="1" aria-label="One more mushroom">+</button></div></div>
  </div></div></div>
  ${(draft.others||[]).map((o,i)=>playerCard(o,i+1)).join('')}
+ ${gamesCard(draftGames())}
  <div class="row"><button data-act="prev" ${hidx===0?'disabled':''}>Previous</button><button class="primary" data-act="next">${hidx===draft.holes.length-1?'Finish Round':'Next Hole'}</button></div>
  <p style="text-align:center"><button class="link" data-act="tosum">Review Round</button></p>`;
  return s;
@@ -1455,6 +1459,99 @@ function playerCard(o,pp){
 }
 // A friend's holes wrapped like a round so calc() can score them.
 const otherRound=(o)=>({rating:draft.rating,slope:draft.slope,holes:o.holes});
+
+/* ---------- money games ---------- */
+// Skins and Nassau, scored from the group's card. Net games use course handicaps: Skins
+// strokes come off the low player; each Nassau match gives the difference between the two.
+// Strokes go on the hardest holes first (stroke index), the same way calc() spreads them.
+function strokeAlloc(holes,D){
+ const n=holes.length,order=holes.map((h,i)=>({i,si:h.si||i+1})).sort((a,b)=>a.si-b.si),rank={};order.forEach((o,k)=>rank[o.i]=k+1);
+ return holes.map((h,i)=>D>0?Math.floor(D/n)+(rank[i]<=D%n?1:0):0);
+}
+// ps: [{uid, ch, scores:[gross or null per hole]}]; meta: the holes (for stroke index).
+// Holes count in order until the first one somebody hasn't scored yet.
+function scoreGames(g,ps,meta){
+ const n=meta.length,res={v:1,netGame:!!g.net,players:ps.map(p=>p.uid),ch:{},net:{},pays:[],done:false};
+ ps.forEach(p=>{res.ch[p.uid]=p.ch;res.net[p.uid]=0});
+ let thru=0;while(thru<n&&ps.every(p=>p.scores[thru]!=null))thru++;
+ res.thru=thru;res.done=thru===n;
+ if(g.skins){
+  const low=Math.min(...ps.map(p=>p.ch)),st=ps.map(p=>g.net?strokeAlloc(meta,p.ch-low):meta.map(()=>0));
+  let carry=0;const holes=[],won={};ps.forEach(p=>won[p.uid]=0);
+  for(let i=0;i<thru;i++){
+   const ns=ps.map((p,k)=>p.scores[i]-st[k][i]),best=Math.min(...ns),who=ps.filter((p,k)=>ns[k]===best),val=1+carry;
+   if(who.length===1){holes.push({w:who[0].uid,v:val});won[who[0].uid]+=val;carry=0}
+   else{holes.push({w:null,v:0});carry=g.skins.carry?val:0}
+  }
+  // Each skin: every other player pays the winner the stake (times any carried-over skins).
+  holes.forEach(h=>{if(h.w)ps.forEach(p=>{if(p.uid!==h.w){res.net[p.uid]-=g.skins.stake*h.v;res.net[h.w]+=g.skins.stake*h.v}})});
+  res.skins={stake:g.skins.stake,carry:!!g.skins.carry,holes,won,left:carry,strokes:Object.fromEntries(ps.map(p=>[p.uid,g.net?p.ch-low:0]))};
+ }
+ if(g.nassau&&n===18){
+  const matches=[];
+  for(let a=0;a<ps.length;a++)for(let b=a+1;b<ps.length;b++){
+   const A=ps[a],B=ps[b],diff=g.net?A.ch-B.ch:0,sa=strokeAlloc(meta,diff),sbb=strokeAlloc(meta,-diff);
+   // +1 when A wins the hole, -1 when B does, 0 when halved.
+   const r=[];for(let i=0;i<thru;i++){const x=(A.scores[i]-sa[i])-(B.scores[i]-sbb[i]);r.push(x<0?1:x>0?-1:0)}
+   // A nine (or the 18). With presses on, a new bet starts on the next hole whenever
+   // someone goes 2 down in the newest bet.
+   const seg=(from,len,press)=>{const bets=[{s:from,up:0}];for(let i=from;i<from+len&&i<r.length;i++){bets.forEach(bt=>{if(i>=bt.s)bt.up+=r[i]});const last=bets[bets.length-1];if(press&&Math.abs(last.up)>=2&&i<from+len-1)bets.push({s:i+1,up:0})}return{bets,thru:Math.max(0,Math.min(r.length,from+len)-from),len}};
+   const m={a:A.uid,b:B.uid,strokes:Math.abs(diff),getter:diff>0?A.uid:diff<0?B.uid:null,front:seg(0,9,g.nassau.press),back:seg(9,9,g.nassau.press),total:seg(0,18,false),amt:0};
+   [m.front,m.back,m.total].forEach(sg=>{if(sg.thru===sg.len)sg.bets.forEach(bt=>m.amt+=Math.sign(bt.up)*g.nassau.stake)});
+   res.net[A.uid]+=m.amt;res.net[B.uid]-=m.amt;matches.push(m);
+  }
+  res.nassau={stake:g.nassau.stake,press:!!g.nassau.press,matches};
+ }
+ for(const u in res.net)res.net[u]=Math.round(res.net[u]*100)/100;
+ res.pays=fewestPayments(res.net);
+ return res;
+}
+// The games for the round being played, scored as it stands.
+function draftGames(){
+ if(!draft||!draft.games||!(draft.others||[]).length)return null;
+ const mk=(uid,holes,ix)=>({uid,scores:holes.map(h=>played(h)?h.score:null),ch:calc({rating:draft.rating,slope:draft.slope,holes},ix).ch||0});
+ return scoreGames(draft.games,[mk(S.me,draft.holes,myIndex()),...draft.others.map(o=>mk(o.uid,o.holes,hcp(S.rounds[o.uid]).index))],draft.holes);
+}
+function gamesCard(res){
+ if(!res||(!res.skins&&!res.nassau))return '';
+ const who=u=>u===S.me?'You':handle(u),ups=(sg,a,b)=>{const t=sg.bets[0].up;return (t?`${who(t>0?a:b)} ${Math.abs(t)} up`:'All square')+(sg.thru&&sg.thru<sg.len?` thru ${sg.thru}`:'')+(sg.bets.length>1?` · ${sg.bets.length-1} press${sg.bets.length>2?'es':''}: ${sg.bets.slice(1).map(bt=>bt.up?`${who(bt.up>0?a:b)} ${Math.abs(bt.up)} up`:'AS').join(', ')}`:'')};
+ let h=`<div class="card games"><div class="bet-head"><b>Money Games</b><span class="hint" style="margin:0">${res.netGame?'Net':'Gross'}${res.done?'':' · thru '+res.thru}</span></div>`;
+ if(res.skins){const sk=res.skins;
+  h+=`<p class="gline"><b>Skins</b> ${fmtMoney(sk.stake)} a skin${sk.carry?', carryovers':''}</p><p class="gsub">${res.players.map(u=>`${esc(who(u))} ${sk.won[u]}`).join(' · ')}${sk.left?` · ${sk.left} skin${sk.left===1?'':'s'} ${res.done?'unclaimed':'carrying'}`:''}</p>`;
+  if(res.netGame&&Object.values(sk.strokes).some(v=>v>0))h+=`<p class="gsub hint">Strokes: ${res.players.filter(u=>sk.strokes[u]>0).map(u=>`${esc(who(u))} ${sk.strokes[u]}`).join(' · ')}</p>`;
+ }
+ if(res.nassau){
+  h+=`<p class="gline"><b>Nassau</b> ${fmtMoney(res.nassau.stake)} front, back and overall${res.nassau.press?', auto-press at 2 down':''}</p>`;
+  res.nassau.matches.forEach(m=>h+=`<div class="gmatch"><b>${esc(who(m.a))} vs ${esc(who(m.b))}</b>${m.getter?`<span class="hint" style="margin:0"> · ${esc(who(m.getter))} get${m.getter===S.me?'':'s'} ${m.strokes}</span>`:''}
+   <span>Front: ${esc(ups(m.front,m.a,m.b))}</span><span>Back: ${m.back.thru?esc(ups(m.back,m.a,m.b)):'Not started'}</span><span>Overall: ${esc(ups(m.total,m.a,m.b))}</span></div>`);
+ }
+ const mine=res.net[S.me];
+ h+=res.pays.length?`<p class="gline" style="margin-top:10px"><b>${res.done?'Settle up':'If it ended now'}</b></p><ul class="paid">${res.pays.map(p=>`<li>${esc(who(p.from))} pay${p.from===S.me?'':'s'} ${esc(p.to===S.me?'you':handle(p.to))} <b>${fmtMoney(p.amt)}</b></li>`).join('')}</ul>`
+  :`<p class="gsub" style="margin-top:8px">${res.done?'Nobody owes anything.':'All even so far.'}</p>`;
+ if(mine!=null&&res.done&&Math.abs(mine)>=0.01)h+=`<p class="hint" style="margin:0">${mine>0?'You won '+fmtMoney(mine):'You lost '+fmtMoney(mine)}. Settle up from Unsettled on your profile.</p>`;
+ return h+`</div>`;
+}
+// What you and each friend owe each other from money games, minus payments marked paid.
+function gameBalances(){
+ const bal={};
+ (S.rounds[S.me]||[]).forEach(r=>{const g=r.games;if(!g||!g.done||!g.pays)return;g.pays.forEach(x=>{
+  if(x.from===S.me)bal[x.to]=(bal[x.to]||0)-x.amt;else if(x.to===S.me)bal[x.from]=(bal[x.from]||0)+x.amt})});
+ ledgerPays('games').forEach(p=>{if(!p.confirmed)return;if(p.payer===S.me)bal[p.payee]=(bal[p.payee]||0)+ +p.amount;else if(p.payee===S.me)bal[p.payer]=(bal[p.payer]||0)- +p.amount});
+ return Object.entries(bal).map(([u,v])=>[u,Math.round(v*100)/100]).filter(([,v])=>Math.abs(v)>=0.01).sort((a,b)=>b[1]-a[1]);
+}
+// Money Games setup on the New Round screen (remembered for next time).
+const GKEY='sandie-games';
+const gsel=()=>S.gsel||(S.gsel={skins:false,skinsStake:5,carry:true,nassau:false,nassauStake:10,press:false,net:true,...LS.get(GKEY,{})});
+function gamesSetup(){
+ const g=gsel(),tog=(k,l)=>`<button class="toggle" data-gtog="${k}" aria-pressed="${!!g[k]}"><span>${l}</span><b>${g[k]?'On':'Off'}</b></button>`;
+ return `<label>Money Games</label>
+  ${tog('skins','Skins')}
+  ${g.skins?`<div class="row gopts"><div><label for="gskst">$ per skin</label><input id="gskst" inputmode="decimal" value="${esc(g.skinsStake)}"></div><div style="align-self:end">${tog('carry','Carryovers')}</div></div>`:''}
+  ${S.nsel==='18'?tog('nassau','Nassau'):`<p class="hint">Nassau needs 18 holes.</p>`}
+  ${g.nassau&&S.nsel==='18'?`<div class="row gopts"><div><label for="gnst">$ per bet</label><input id="gnst" inputmode="decimal" value="${esc(g.nassauStake)}"></div><div style="align-self:end">${tog('press','Auto-press at 2 down')}</div></div>`:''}
+  ${g.skins||g.nassau&&S.nsel==='18'?`<div class="seg" style="margin-top:8px">${[[true,'Net (handicaps)'],[false,'Gross']].map(([v,l])=>`<button data-gnet="${v}" aria-pressed="${g.net===v}">${l}</button>`).join('')}</div>
+  <p class="hint">${g.nassau&&S.nsel==='18'?'Nassau: everyone plays a match against everyone, with a bet on the front 9, back 9 and overall. ':''}${g.net?'Net games use each player’s course handicap from these tees.':'Gross: no handicap strokes.'}</p>`:''}`;
+}
 function summaryView(){
  const ix=S.status==='ready'?myIndex():null,t=calc(draft,ix);
  let s=`${header('Round Summary',draft.course+' · '+fmtDate(draft.date))}
@@ -1467,6 +1564,7 @@ function summaryView(){
  if((draft.others||[]).length){
   s+=`<h2>Your Group</h2><div class="card"><table><thead><tr><th>Player</th><th class="n">Score</th><th class="n">Putts</th><th class="n">Tiger 5</th><th class="n">Diff</th></tr></thead><tbody>${draft.others.map(o=>{const x=calc(otherRound(o),hcp(S.rounds[o.uid]).index);return `<tr><td>${withPic(o.uid,handle(o.uid))}</td><td class="n">${x.score} <span style="font-weight:400;color:var(--mute)">${rel(x.score-x.parPlayed)}</span></td><td class="n" style="font-weight:400">${x.putts==null?'—':x.putts}</td><td class="n" style="font-weight:400">${x.t5}</td><td class="n" style="font-weight:400">${fmtDiff(x.diff)}</td></tr>`}).join('')}</tbody></table>
   <p class="hint">Posting adds each friend’s round to their card, marked as scored by you. They can delete it if something’s wrong.</p></div>`;
+  s+=gamesCard(draftGames());
  }
  s+=S.status==='ready'?`<button class="primary wide" style="margin-bottom:8px" data-act="post" ${S.busy?'disabled':''}>${S.busy?'Posting…':(draft.others||[]).length?'Post Rounds for Group':'Post Round'}</button>`:`<div class="card note"><p style="margin:0">Sign in to post this round. It stays saved on this phone until you do.</p></div>`;
  s+=`<div class="row"><button data-act="back">Back to Holes</button>${S.confirm==='discard'?`<button class="danger" data-act="discard">Yes, discard</button>`:`<button data-act="ask" data-c="discard">Discard Round</button>`}</div>`;
@@ -1490,9 +1588,11 @@ async function postRound(){
  if(!draft||S.busy)return;
  const ix=myIndex(),t=calc(draft,ix),sc=draft.scorecards||[],titlesBefore=titleHolders();
  // Your round, plus one round per friend you scored (posted to their card, marked as entered by you).
- const rows=[JSON.parse(JSON.stringify(toRow(draft,t,ix,{scorecards:sc})))];
+ // Money games: the final result (and who pays whom) is saved on every player's round.
+ const games=draftGames();
+ const rows=[JSON.parse(JSON.stringify(toRow(draft,t,ix,{scorecards:sc,games})))];
  (draft.others||[]).forEach(o=>{const oix=hcp(S.rounds[o.uid]).index,ot=calc(otherRound(o),oix);
-  rows.push(JSON.parse(JSON.stringify(toRow({...draft,id:o.id,holes:o.holes},ot,oix,{user_id:o.uid,entered_by:S.me,scorecards:sc}))))});
+  rows.push(JSON.parse(JSON.stringify(toRow({...draft,id:o.id,holes:o.holes},ot,oix,{user_id:o.uid,entered_by:S.me,scorecards:sc,games}))))});
  const ids=rows.map(r=>r.id);
  LS.set(OUTKEY,[...LS.get(OUTKEY,[]).filter(r=>!ids.includes(r.id)),...rows]);
  rows.forEach(row=>(S.rounds[row.user_id]=S.rounds[row.user_id]||[]).unshift(fromRow({...row,created_at:new Date().toISOString(),_pending:true})));
@@ -1577,12 +1677,18 @@ document.addEventListener('click',async e=>{
   const c=$('#course');if(c)c.dispatchEvent(new Event('change',{bubbles:true}));return;
  }
  if(a==='pickcourse'){S.picking=!S.picking;if(S.picking)S.cstate=(COURSES[S.courseKey]&&COURSES[S.courseKey].state)||S.cstate||'VA';return render()}
+ if(d.gtog||d.gnet){
+  const g=gsel(),num=(id,k)=>{const el=$(id);if(el&&+el.value>0)g[k]=Math.round(+el.value*100)/100};
+  num('#gskst','skinsStake');num('#gnst','nassauStake');
+  if(d.gtog)g[d.gtog]=!g[d.gtog];else g.net=d.gnet==='true';
+  LS.set(GKEY,g);return render();
+ }
  if(d.withsel){const s=new Set(S.withSel||[]);if(s.has(d.withsel))s.delete(d.withsel);else{if(s.size>=3)return toast('A group is you plus 3 friends.');s.add(d.withsel)}S.withSel=[...s];return render()}
  if(d.badgetip)return toast(d.badgetip);
  if(d.pushcat)return pushCat(d.pushcat);
  if(a==='pushon')return pushOn();
  if(a==='pushoff')return pushOff();
- if(a==='nudge'){b.disabled=true;await nudge(d.u,+d.amt,d.tid);b.disabled=false;return}
+ if(a==='nudge'){b.disabled=true;await nudge(d.u,+d.amt,d.tid,d.ledger);b.disabled=false;return}
  if(a==='markpaid'||a==='ipaid'){b.disabled=true;return recordPayment(d,a==='markpaid')}
  if(a==='confirmpay'){b.disabled=true;const {error}=await sb.from('payments').update({confirmed:true,confirmed_at:new Date().toISOString()}).eq('id',d.id);if(error)return fail(error,'Couldn’t confirm that payment.');toast('Payment confirmed');return loadAll()}
  if(a==='undopay'){b.disabled=true;const {error}=await sb.from('payments').delete().eq('id',d.id);if(error)return fail(error,'Couldn’t remove that payment.');toast('Payment removed');return loadAll()}
@@ -1720,6 +1826,12 @@ document.addEventListener('click',async e=>{
   draft={id:newId(),course:c?c.name:($('#cname').value.trim()||'My round'),tee:c?tee:'',rating:$('#rating').value.trim(),slope:$('#slope').value.trim(),date:$('#rdate').value||today(),nine:n==='18'?null:n,
    holes:blank(),others:(S.withSel||[]).filter(isFriend).slice(0,3).map(uid=>({uid,id:newId(),holes:blank()})),
    scorecards:c?[]:[S.scPaths&&S.scPaths.front,S.scPaths&&S.scPaths.back].filter(Boolean)};
+  // Money games (only with a group). Stakes come from the setup fields.
+  const g=gsel(),stake=(id,def)=>{const el=$(id),v=el?Math.round(+el.value*100)/100:def;return v>0&&v<10000?v:def};
+  if(draft.others.length&&(g.skins||g.nassau&&n==='18')){
+   if(g.skins)g.skinsStake=stake('#gskst',g.skinsStake);if(g.nassau)g.nassauStake=stake('#gnst',g.nassauStake);LS.set(GKEY,g);
+   draft.games={net:!!g.net,skins:g.skins?{stake:g.skinsStake,carry:!!g.carry}:null,nassau:g.nassau&&n==='18'?{stake:g.nassauStake,press:!!g.press}:null};
+  }
   S.withSel=[];S.scPaths=null;hidx=0;playView='hole';saveDraft();return render();
  }
  if(a==='post')return postRound();
