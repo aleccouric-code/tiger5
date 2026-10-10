@@ -167,6 +167,8 @@ async function loadAll(){
   }
   S.rounds=rounds;addPendingLocal();
   await loadSocial(rounds);
+  // People You May Know (friends of friends). Their names and photos join the profiles list so av() works.
+  try{const {data:sg,error:se}=await sb.rpc('suggested_friends');if(!se){S.suggest=sg||[];S.suggest.forEach(p=>{if(!S.profiles[p.id])S.profiles[p.id]={id:p.id,handle:p.handle,avatar_url:p.avatar_url}})}}catch(e){}
   try{const {data:vp,error:ve}=await sb.from('profile_private').select('id,venmo');if(!ve){S.venmo={};(vp||[]).forEach(v=>{if(v.venmo)S.venmo[v.id]=v.venmo})}}catch(e){}
   S.status='ready';S.offline=false;cacheSave();
   render();
@@ -441,7 +443,7 @@ function roundItem(r,showWho=true){
   <div class="score"><b>${r.score}</b><span>${r.complete?rel(r.score-r.parPlayed):r.holesPlayed+' holes'}</span></div></button>`;
 }
 /* ---------- settings ---------- */
-const APP_VERSION='v38';
+const APP_VERSION='v39';
 const GEAR=`<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.86a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1Z"/></svg>`;
 // Settings: grouped like a phone's settings app. Profile, Payments, Account, About.
 function settingsView(){
@@ -694,6 +696,7 @@ function friendsView(){
  const inc=incoming(),out=outgoing(),fr=friendIds();
  if(S.invite)h+=`<div class="card note item">${av(S.invite.id)}<div class="mid"><b>${esc(S.invite.handle)}</b><span>Invited you to be friends</span></div><button class="primary" data-act="addinvite">Add</button><button class="link" data-act="dropinvite">Not now</button></div>`;
  if(inc.length){h+=`<h2>Requests</h2>`;inc.forEach(id=>h+=`<div class="card item">${av(id)}<div class="mid"><b>${esc(handle(id))}</b><span>Wants to share scores with you</span></div><button class="primary" data-act="accept" data-id="${esc(id)}">Accept</button><button class="link" data-act="unfriend" data-id="${esc(id)}">Ignore</button></div>`)}
+ h+=mayKnow();
  h+=`<h2>Find Friends</h2><div class="card">
   <label for="fsearch" style="margin-top:0">Search by name, email or friend code</label>
   <div class="row"><input id="fsearch" type="search" maxlength="100" autocapitalize="none" autocomplete="off" placeholder="e.g. Jonathan or jon@example.com"><button style="flex:none" data-act="search" ${S.searching?'disabled':''}>${S.searching?'Searching…':'Search'}</button></div>
@@ -708,6 +711,17 @@ function friendsView(){
  return h;
 }
 
+// Friends of your friends, most mutual friends first. Hidden ones stay hidden on this phone.
+const HIDEKEY='sandie-hide-suggest';
+function mayKnow(){
+ const hidden=LS.get(HIDEKEY,[]),list=(S.suggest||[]).filter(p=>!hidden.includes(p.id)&&!S.friendships.some(f=>other(f)===p.id)).slice(0,6);
+ if(!list.length)return '';
+ return `<h2>People You May Know</h2>`+list.map(p=>{
+  const names=(p.mutual_ids||[]).filter(isFriend).map(handle),more=p.mutual-names.length;
+  const why=`${p.mutual} mutual friend${p.mutual===1?'':'s'}${names.length?' · '+names.join(', ')+(more>0?' +'+more:''):''}`;
+  return `<div class="card item">${av(p.id)}<div class="mid"><b>${esc(p.handle)}</b><span>${esc(why)}</span></div><button class="primary" data-act="add" data-id="${esc(p.id)}">Add</button><button class="link" data-act="hidesuggest" data-id="${esc(p.id)}" aria-label="Hide ${esc(p.handle)}">Hide</button></div>`;
+ }).join('');
+}
 function diffChart(x){
  const rs=[...x.rs].reverse();if(!rs.length)return'';
  const W=320,H=110,pad=18,bw=(W-pad)/20;
@@ -1563,6 +1577,7 @@ document.addEventListener('click',async e=>{
  if(a==='share')return shareInvite();
  if(a==='search')return searchPlayers();
  if(a==='add')return addFriend(d.id);
+ if(a==='hidesuggest'){LS.set(HIDEKEY,[...LS.get(HIDEKEY,[]),d.id].slice(-200));return render()}
  if(a==='addinvite'){const p=S.invite;S.invite=null;S.profiles[p.id]={id:p.id,handle:p.handle};return addFriend(p.id)}
  if(a==='dropinvite'){S.invite=null;return render()}
  if(a==='accept')return accept(d.id);
