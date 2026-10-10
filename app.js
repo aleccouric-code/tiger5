@@ -452,7 +452,7 @@ function roundItem(r,showWho=true){
   <div class="score"><b>${r.score}</b><span>${r.complete?rel(r.score-r.parPlayed):r.holesPlayed+' holes'}</span></div></button>`;
 }
 /* ---------- settings ---------- */
-const APP_VERSION='v43';
+const APP_VERSION='v44';
 const GEAR=`<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.86a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1Z"/></svg>`;
 // Settings: grouped like a phone's settings app. Profile, Payments, Account, About.
 function settingsView(){
@@ -1542,7 +1542,7 @@ function holeView(){
  let s=`${header(draft.course,'Hole '+(start+hidx)+' of '+(start+draft.holes.length-1))}
  <div class="strip" style="grid-template-columns:repeat(${Math.min(9,draft.holes.length)},1fr)">`;
  draft.holes.forEach((x,i)=>s+=`<button data-go="${i}" class="${i===hidx?'cur ':''}${fails(x).length?'bad':played(x)?'done':''}" aria-label="Hole ${start+i}">${start+i}</button>`);
- s+=`</div><div class="card"><div class="hole-head"><b>Hole ${start+hidx}</b><span class="sub" style="margin:0">${rel((p?h.score:h.par)-h.par)} to par</span></div>
+ s+=`</div>${wolfPicker()}<div class="card"><div class="hole-head"><b>Hole ${start+hidx}</b><span class="sub" style="margin:0">${rel((p?h.score:h.par)-h.par)} to par</span></div>
  ${h.yds?`<p class="sub" style="margin:4px 0 0">${h.yds} yds from the ${esc(draft.tee)} tees · stroke index ${h.si}</p>`:''}<label>Par</label><div class="seg">${[3,4,5].map(n=>`<button data-par="${n}" aria-pressed="${h.par===n}">${n}</button>`).join('')}</div>
  <label>Strokes</label><div class="stepper"><button data-sc="-1" aria-label="Fewer strokes">−</button><output>${p?h.score:h.par}</output><button data-sc="1" aria-label="More strokes">+</button></div>
  <label>Putts${h.putts==null?` <span class="${S.puttsNag?'neg':'hint'}" style="font-weight:400;font-size:14px">(required to continue)</span>`:''}</label><div class="stepper${S.puttsNag&&h.putts==null?' need':''}"><button data-pt="-1" aria-label="Fewer putts">−</button><output>${h.putts==null?'–':h.putts}</output><button data-pt="1" aria-label="More putts">+</button></div>
@@ -1626,6 +1626,29 @@ function scoreGames(g,ps,meta){
   }
   res.nassau={stake:g.nassau.stake,press:!!g.nassau.press,matches};
  }
+ // Wolf (3 or 4 players): the Wolf rotates each hole and picks a partner, goes Lone Wolf,
+ // or calls Blind Wolf before anyone tees off. Best ball on each side wins the hole.
+ // Points: Wolf + partner win 2 each; the other side wins 3 each; Lone Wolf wins 4 or
+ // everyone else gets 1; Blind Wolf wins 6 or everyone else gets 2. Halved holes score nothing.
+ if(g.wolf&&ps.length>=3&&ps.length<=4){
+  const order=(g.wolf.order||[]).filter(u=>ps.some(p=>p.uid===u)),low=Math.min(...ps.map(p=>p.ch));
+  const st=Object.fromEntries(ps.map(p=>[p.uid,g.net?strokeAlloc(meta,p.ch-low):meta.map(()=>0)]));
+  const pts={},holes=[];ps.forEach(p=>pts[p.uid]=0);
+  const best=(us,i)=>Math.min(...us.map(u=>ps.find(p=>p.uid===u).scores[i]-st[u][i]));
+  for(let i=0;i<thru;i++){
+   const wolf=order[i%order.length],pk=(g.wolf.picks||[])[i];
+   if(!pk||!pk.m||(pk.m==='partner'&&!order.includes(pk.p))){holes.push({wolf,open:true});continue}
+   const team=pk.m==='partner'?[wolf,pk.p]:[wolf],rest=order.filter(u=>!team.includes(u)),a=best(team,i),b=best(rest,i);
+   let win=null;
+   if(a<b){win='wolf';if(pk.m==='partner')team.forEach(u=>pts[u]+=2);else pts[wolf]+=pk.m==='blind'?6:4}
+   else if(b<a){win='others';rest.forEach(u=>pts[u]+=pk.m==='partner'?3:pk.m==='blind'?2:1)}
+   holes.push({wolf,m:pk.m,p:pk.m==='partner'?pk.p:null,win});
+  }
+  // Every pair settles the difference in their points.
+  const tot=Object.values(pts).reduce((x,y)=>x+y,0);
+  ps.forEach(p=>res.net[p.uid]+=g.wolf.stake*(ps.length*pts[p.uid]-tot));
+  res.wolf={stake:g.wolf.stake,order,holes,pts,next:thru<n?order[thru%order.length]:null};
+ }
  for(const u in res.net)res.net[u]=Math.round(res.net[u]*100)/100;
  res.pays=fewestPayments(res.net);
  return res;
@@ -1637,7 +1660,7 @@ function draftGames(){
  return scoreGames(draft.games,[mk(S.me,draft.holes,myIndex()),...draft.others.map(o=>mk(o.uid,o.holes,hcp(S.rounds[o.uid]).index))],draft.holes);
 }
 function gamesCard(res){
- if(!res||(!res.skins&&!res.nassau))return '';
+ if(!res||(!res.skins&&!res.nassau&&!res.wolf))return '';
  const who=u=>u===S.me?'You':handle(u),ups=(sg,a,b)=>{const t=sg.bets[0].up;return (t?`${who(t>0?a:b)} ${Math.abs(t)} up`:'All square')+(sg.thru&&sg.thru<sg.len?` thru ${sg.thru}`:'')+(sg.bets.length>1?` · ${sg.bets.length-1} press${sg.bets.length>2?'es':''}: ${sg.bets.slice(1).map(bt=>bt.up?`${who(bt.up>0?a:b)} ${Math.abs(bt.up)} up`:'AS').join(', ')}`:'')};
  let h=`<div class="card games"><div class="bet-head"><b>Money Games</b><span class="hint" style="margin:0">${res.netGame?'Net':'Gross'}${res.done?'':' · thru '+res.thru}</span></div>`;
  if(res.skins){const sk=res.skins;
@@ -1648,6 +1671,10 @@ function gamesCard(res){
   h+=`<p class="gline"><b>Nassau</b> ${fmtMoney(res.nassau.stake)} front, back and overall${res.nassau.press?', auto-press at 2 down':''}</p>`;
   res.nassau.matches.forEach(m=>h+=`<div class="gmatch"><b>${esc(who(m.a))} vs ${esc(who(m.b))}</b>${m.getter?`<span class="hint" style="margin:0"> · ${esc(who(m.getter))} get${m.getter===S.me?'':'s'} ${m.strokes}</span>`:''}
    <span>Front: ${esc(ups(m.front,m.a,m.b))}</span><span>Back: ${m.back.thru?esc(ups(m.back,m.a,m.b)):'Not started'}</span><span>Overall: ${esc(ups(m.total,m.a,m.b))}</span></div>`);
+ }
+ if(res.wolf){const wf=res.wolf,open=wf.holes.map((x,i)=>x.open?i:-1).filter(i=>i>=0),start=draft&&draft.nine==='back'?10:1;
+  h+=`<p class="gline"><b>Wolf</b> ${fmtMoney(wf.stake)} a point</p><p class="gsub">${wf.order.map(u=>`${esc(who(u))} ${wf.pts[u]}`).join(' · ')}${wf.next?` · Next Wolf: ${esc(who(wf.next))}`:''}</p>`;
+  if(open.length)h+=`<p class="gsub neg">No Wolf pick on hole${open.length===1?'':'s'} ${open.map(i=>i+start).join(', ')}, so ${open.length===1?'it doesn’t':'they don’t'} count yet.</p>`;
  }
  const mine=res.net[S.me];
  h+=res.pays.length?`<p class="gline" style="margin-top:10px"><b>${res.done?'Settle up':'If it ended now'}</b></p><ul class="paid">${res.pays.map(p=>`<li>${esc(who(p.from))} pay${p.from===S.me?'':'s'} ${esc(p.to===S.me?'you':handle(p.to))} <b>${fmtMoney(p.amt)}</b></li>`).join('')}</ul>`
@@ -1665,16 +1692,27 @@ function gameBalances(){
 }
 // Money Games setup on the New Round screen (remembered for next time).
 const GKEY='sandie-games';
-const gsel=()=>S.gsel||(S.gsel={skins:false,skinsStake:5,carry:true,nassau:false,nassauStake:10,press:false,net:true,...LS.get(GKEY,{})});
+const gsel=()=>S.gsel||(S.gsel={skins:false,skinsStake:5,carry:true,nassau:false,nassauStake:10,press:false,wolf:false,wolfStake:1,net:true,...LS.get(GKEY,{})});
+// The Wolf picker on each hole: partner, Lone Wolf, or Blind Wolf.
+function wolfPicker(){
+ const w=draft&&draft.games&&draft.games.wolf;if(!w)return '';
+ const order=w.order,wolf=order[hidx%order.length],pk=(w.picks||[])[hidx]||{},who=u=>u===S.me?'You':handle(u);
+ return `<div class="card wolfcard"><b>🐺 Wolf: ${esc(who(wolf))}</b>
+  <p class="hint" style="margin:4px 0 8px">${wolf===S.me?'You tee off last, then pick a partner or go alone.':esc(handle(wolf))+' tees off last, then picks a partner or goes alone.'}</p>
+  <div class="pick">${order.filter(u=>u!==wolf).map(u=>`<button data-wolfp="${esc(u)}" aria-pressed="${pk.m==='partner'&&pk.p===u}">+ ${esc(who(u))}</button>`).join('')}<button data-wolfm="lone" aria-pressed="${pk.m==='lone'}">Lone Wolf</button><button data-wolfm="blind" aria-pressed="${pk.m==='blind'}">Blind Wolf</button></div></div>`;
+}
 function gamesSetup(){
  const g=gsel(),tog=(k,l)=>`<button class="toggle" data-gtog="${k}" aria-pressed="${!!g[k]}"><span>${l}</span><b>${g[k]?'On':'Off'}</b></button>`;
+ const size=(S.withSel||[]).length+1,wolfOk=size>=3&&size<=4,any=g.skins||g.nassau&&S.nsel==='18'||g.wolf&&wolfOk;
  return `<label>Money Games</label>
   ${tog('skins','Skins')}
   ${g.skins?`<div class="row gopts"><div><label for="gskst">$ per skin</label><input id="gskst" inputmode="decimal" value="${esc(g.skinsStake)}"></div><div style="align-self:end">${tog('carry','Carryovers')}</div></div>`:''}
   ${S.nsel==='18'?tog('nassau','Nassau'):`<p class="hint">Nassau needs 18 holes.</p>`}
   ${g.nassau&&S.nsel==='18'?`<div class="row gopts"><div><label for="gnst">$ per bet</label><input id="gnst" inputmode="decimal" value="${esc(g.nassauStake)}"></div><div style="align-self:end">${tog('press','Auto-press at 2 down')}</div></div>`:''}
-  ${g.skins||g.nassau&&S.nsel==='18'?`<div class="seg" style="margin-top:8px">${[[true,'Net (handicaps)'],[false,'Gross']].map(([v,l])=>`<button data-gnet="${v}" aria-pressed="${g.net===v}">${l}</button>`).join('')}</div>
-  <p class="hint">${g.nassau&&S.nsel==='18'?'Nassau: everyone plays a match against everyone, with a bet on the front 9, back 9 and overall. ':''}${g.net?'Net games use each player’s course handicap from these tees.':'Gross: no handicap strokes.'}</p>`:''}`;
+  ${wolfOk?tog('wolf','Wolf'):`<p class="hint">Wolf needs 3 or 4 players.</p>`}
+  ${g.wolf&&wolfOk?`<div class="row gopts"><div><label for="gwst">$ per point</label><input id="gwst" inputmode="decimal" value="${esc(g.wolfStake)}"></div><div></div></div>`:''}
+  ${any?`<div class="seg" style="margin-top:8px">${[[true,'Net (handicaps)'],[false,'Gross']].map(([v,l])=>`<button data-gnet="${v}" aria-pressed="${g.net===v}">${l}</button>`).join('')}</div>
+  <p class="hint">${g.nassau&&S.nsel==='18'?'Nassau: everyone plays a match against everyone, with a bet on the front 9, back 9 and overall. ':''}${g.wolf&&wolfOk?'Wolf: the Wolf rotates each hole, tees off last and picks a partner or goes alone. Win with a partner: 2 points each; the other side wins: 3 each; Lone Wolf wins 4 or everyone else gets 1 (Blind Wolf: 6 or 2). Everyone settles the point difference. ':''}${g.net?'Net games use each player’s course handicap from these tees.':'Gross: no handicap strokes.'}</p>`:''}`;
 }
 function summaryView(){
  const ix=S.status==='ready'?myIndex():null,t=calc(draft,ix);
@@ -1960,9 +1998,11 @@ document.addEventListener('click',async e=>{
    scorecards:c?[]:[S.scPaths&&S.scPaths.front,S.scPaths&&S.scPaths.back].filter(Boolean)};
   // Money games (only with a group). Stakes come from the setup fields.
   const g=gsel(),stake=(id,def)=>{const el=$(id),v=el?Math.round(+el.value*100)/100:def;return v>0&&v<10000?v:def};
-  if(draft.others.length&&(g.skins||g.nassau&&n==='18')){
-   if(g.skins)g.skinsStake=stake('#gskst',g.skinsStake);if(g.nassau)g.nassauStake=stake('#gnst',g.nassauStake);LS.set(GKEY,g);
-   draft.games={net:!!g.net,skins:g.skins?{stake:g.skinsStake,carry:!!g.carry}:null,nassau:g.nassau&&n==='18'?{stake:g.nassauStake,press:!!g.press}:null};
+  const wolfOk=draft.others.length>=2&&draft.others.length<=3;
+  if(draft.others.length&&(g.skins||g.nassau&&n==='18'||g.wolf&&wolfOk)){
+   if(g.skins)g.skinsStake=stake('#gskst',g.skinsStake);if(g.nassau)g.nassauStake=stake('#gnst',g.nassauStake);if(g.wolf)g.wolfStake=stake('#gwst',g.wolfStake);LS.set(GKEY,g);
+   draft.games={net:!!g.net,skins:g.skins?{stake:g.skinsStake,carry:!!g.carry}:null,nassau:g.nassau&&n==='18'?{stake:g.nassauStake,press:!!g.press}:null,
+    wolf:g.wolf&&wolfOk?{stake:g.wolfStake,order:[S.me,...draft.others.map(o=>o.uid)],picks:[]}:null};
   }
   S.withSel=[];S.scPaths=null;hidx=0;playView='hole';saveDraft();return render();
  }
@@ -1986,6 +2026,10 @@ document.addEventListener('click',async e=>{
  else if(d.gb)h.gb=Math.max(0,(h.gb||0)+ +d.gb);
  else if(d.club)h.club=Math.max(0,(h.club||0)+ +d.club);
  else if(d.mush)h.mush=Math.max(0,(h.mush||0)+ +d.mush);
+ else if((d.wolfp||d.wolfm)&&draft.games&&draft.games.wolf){ // tap the same choice again to clear it
+  const w=draft.games.wolf,cur=(w.picks=w.picks||[])[hidx]||{},nx=d.wolfp?{m:'partner',p:d.wolfp}:{m:d.wolfm};
+  w.picks[hidx]=cur.m===nx.m&&cur.p===nx.p?null:nx;
+ }
  else if(a==='prev'){S.puttsNag=false;hidx--}
  else if(a==='next'){if(needPutts())return;S.puttsNag=false;everyone().forEach(hs=>{if(hs[hidx].score==null)hs[hidx].score=hs[hidx].par});if(hidx===draft.holes.length-1)playView='sum';else hidx++}
  else return;
