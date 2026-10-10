@@ -1,6 +1,6 @@
 'use strict';
 
-/* ---------- Tiger 5 rules and courses ---------- */
+/* ---------- Sandie 5 rules and courses ---------- */
 const RULES=[
  {k:'r1',n:'No 6s on par-5s',t:(h)=>h.par===5&&h.score>=6},
  {k:'r2',n:'No doubles',t:(h)=>h.score>=h.par+2},
@@ -313,6 +313,7 @@ function render(){
  else if(S.view==='board')html=boardView();
  else if(S.view==='leaders')html=leadersView();
  else if(S.view==='settings')html=settingsView();
+ else if(S.view==='about')html=aboutView();
  else if(S.view==='newbet')html=newBetView();
  else if(S.view==='trips')html=tripsView();
  else if(S.view==='newtrip')html=newTripView();
@@ -337,14 +338,15 @@ const TAB_ICONS={
  board:ico('<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M12 8.5v7M14.2 10.2c-.4-.8-1.2-1.2-2.2-1.2-1.3 0-2.2.7-2.2 1.6 0 2.2 4.6 1 4.6 3.2 0 .9-1 1.7-2.4 1.7-1.1 0-2-.5-2.4-1.3"/>'),
  leaders:ico('<path d="M8 4h8v5a4 4 0 0 1-8 0V4ZM8 6H5v1.5A3.5 3.5 0 0 0 8.5 11M16 6h3v1.5a3.5 3.5 0 0 1-3.5 3.5M12 13v4M8.5 20h7M10 17h4"/>'),
  friends:ico('<circle cx="9" cy="8.5" r="3.2"/><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"/><circle cx="16.5" cy="9.5" r="2.6"/><path d="M16 14.2c2.4.2 4 1.8 4.5 4.3"/>'),
- me:ico('<circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20.5c.8-4 3.8-6.2 7.5-6.2s6.7 2.2 7.5 6.2"/>')
+ me:ico('<circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20.5c.8-4 3.8-6.2 7.5-6.2s6.7 2.2 7.5 6.2"/>'),
+ about:ico('<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.6v.4"/>')
 };
 function renderTabs(){
  const hide=S.status==='auth'||S.status==='setup';
  const ready=S.status==='ready';
  const badges={friends:ready?incoming().length:0,board:ready?S.board.filter(needsMyPick).length:0};
  const cur=S.view==='settings'||S.view==='player'&&(S.arg||S.me)===S.me?'me':(S.view==='trip'||S.view==='newtrip')?'trips':S.view==='newbet'?'board':(S.view==='round'||S.view==='player')?'':S.view;
- const t=[['feed','Feed'],['play',draft?'Round':'Play'],['trips','Trips'],['board','Board'],['leaders','Leaders'],['friends','Friends'],['me','Me']];
+ const t=[['feed','Feed'],['play',draft?'Round':'Play'],['trips','Trips'],['board','Board'],['leaders','Leaders'],['friends','Friends'],['me','Me'],['about','About']];
  $('#tabs').innerHTML=hide?'':`<div>${t.map(([k,l])=>`<button data-nav="${k}" ${cur===k?'aria-current="page"':''}><span class="ti">${TAB_ICONS[k]}</span><span class="tl">${l}</span>${badges[k]?`<span class="badge">${badges[k]}</span>`:''}</button>`).join('')}</div>`;
 }
 // Sandie logo: the splash screen's emblem (gold ring, flag, ball in the bunker).
@@ -396,16 +398,16 @@ function allFeedRounds(){
 // Per-hole extras (beers, rips; stored as "gb") added up for a round.
 const holeSum=(r,k)=>(r.holes||[]).reduce((a,h)=>a+(+h[k]||0),0);
 const extrasTags=(r)=>{const b=holeSum(r,'beer'),sh=holeSum(r,'shot'),g=holeSum(r,'gb'),c=holeSum(r,'club'),m=holeSum(r,'mush');return (b?`<span class="tag gold">🍺 ${b}</span>`:'')+(sh?`<span class="tag gold" title="Shotguns">💥 ${sh}</span>`:'')+(g?`<span class="tag">💨 ${g}</span>`:'')+(c?`<span class="tag red" title="Thrown clubs">🪃 ${c}</span>`:'')+(m?`<span class="tag" title="Mushrooms">🍄 ${m}</span>`:'')};
-// Round rating from Tiger 5 misses. Trophies: 0 → three, 1 → two, 2–3 → one
+// Round rating from Sandie 5 misses. Trophies: 0 → three, 1 → two, 2–3 → one
 // (finished rounds only, so a few clean holes don't earn them).
 // Poo: 4–7 → one, 8–10 → two, 11+ → three.
 const pooCount=(t5)=>t5>=11?3:t5>=8?2:t5>=4?1:0;
 const trophyCount=(t5)=>t5===0?3:t5===1?2:t5<=3?1:0;
 function rateBadge(r){
  const t5=r.t5;
- if(r.complete&&trophyCount(t5)){const n=trophyCount(t5);return `<span class="tag trophy" role="img" aria-label="Trophy rating ${n} of 3: ${t5} Tiger 5 misses" title="${t5} Tiger 5 miss${t5===1?'':'es'}">${'🏆'.repeat(n)}</span>`}
+ if(r.complete&&trophyCount(t5)){const n=trophyCount(t5);return `<span class="tag trophy" role="img" aria-label="Trophy rating ${n} of 3: ${t5} Sandie 5 misses" title="${t5} Sandie 5 miss${t5===1?'':'es'}">${'🏆'.repeat(n)}</span>`}
  const n=pooCount(t5);if(!n)return '';
- return `<span class="tag poo" role="img" aria-label="Poo rating ${n} of 3: ${t5} Tiger 5 misses" title="${t5} Tiger 5 misses">${'💩'.repeat(n)}</span>`;
+ return `<span class="tag poo" role="img" aria-label="Poo rating ${n} of 3: ${t5} Sandie 5 misses" title="${t5} Sandie 5 misses">${'💩'.repeat(n)}</span>`;
 }
 const relDay=(s)=>{const n=Math.round((new Date(today()+'T12:00:00')-new Date(s+'T12:00:00'))/864e5);return n===0?'Today':n===1?'Yesterday':n>1&&n<7?n+' days ago':fmtDate(s)};
 const FLAG='<svg class="flag" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 21V3l10 4-10 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><ellipse cx="7" cy="21" rx="5" ry="1.6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>';
@@ -419,7 +421,7 @@ function feedCard(r){
  const rings=[
   ['Score',r.score,r.complete?rel(r.score-r.parPlayed):r.holesPlayed+' holes',r.diff==null?none:ix==null?ok:r.diff<=ix?good:r.diff<=ix+3?ok:bad],
   ['Putts',r.putts==null?'–':r.putts,r.putts==null?'not tracked':(p18/18).toFixed(1)+'/hole',p18==null?none:p18<=32?good:p18<=36?ok:bad],
-  ['Tiger 5',r.t5,'misses',r.t5<=3?good:r.t5<=7?ok:bad],
+  ['Sandie 5',r.t5,'misses',r.t5<=3?good:r.t5<=7?ok:bad],
   ['Diff',fmtDiff(r.diff),r.diff==null?'not rated':'differential',r.diff==null?none:ix==null?ok:r.diff<=ix?good:r.diff<=ix+3?ok:bad]];
  const key=esc(r.uid)+'/'+esc(r.id);
  return `<article class="card fcard">
@@ -448,11 +450,11 @@ function roundItem(r,showWho=true){
   ${showWho?av(r.uid):''}
   <div class="mid"><b>${showWho?esc(r.uid===S.me?'You':handle(r.uid))+' · ':''}${esc(r.course)}</b>
   <span>${fmtDate(r.date)}${r.n===9?' · 9 holes':''}${r.tee?' · '+esc(r.tee):''}</span>
-  <div class="tags">${rateBadge(r)}<span class="tag ${r.t5>=Math.round(r.n/2)?'red':''}">Tiger 5 misses ${r.t5}</span>${r.diff!=null?`<span class="tag gold">Diff ${fmtDiff(r.diff)}</span>`:''}${extrasTags(r)}${r.pending?'<span class="tag red">Waiting to post</span>':''}</div></div>
+  <div class="tags">${rateBadge(r)}<span class="tag ${r.t5>=Math.round(r.n/2)?'red':''}">Sandie 5 misses ${r.t5}</span>${r.diff!=null?`<span class="tag gold">Diff ${fmtDiff(r.diff)}</span>`:''}${extrasTags(r)}${r.pending?'<span class="tag red">Waiting to post</span>':''}</div></div>
   <div class="score"><b>${r.score}</b><span>${r.complete?rel(r.score-r.parPlayed):r.holesPlayed+' holes'}</span></div></button>`;
 }
 /* ---------- settings ---------- */
-const APP_VERSION='v46';
+const APP_VERSION='v47';
 const GEAR=`<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.86a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1Z"/></svg>`;
 // Settings: grouped like a phone's settings app. Profile, Payments, Account, About.
 function settingsView(){
@@ -484,6 +486,43 @@ function settingsView(){
   <a class="setrow setlink" href="https://opengolfapi.org/attribution" target="_blank" rel="noopener"><span class="setlab">Course Data</span><span class="setval">OpenGolfAPI ›</span></a>
  </div>`;
  if(S.photoView===S.me&&photo)h+=`<div class="overlay photo-ov" role="dialog" aria-label="Profile photo"><div class="row" style="flex:none"><b style="color:#fff">You</b><button data-act="closephoto" style="flex:none">Close</button></div><img src="${esc(photo)}" alt="Your profile photo"></div>`;
+ return h;
+}
+
+/* ---------- about ---------- */
+// The Sandie 5 (from RULES) and a short how-to for every feature.
+const SANDIE5_WHY={
+ r1:['No bogeys on par 5s','A 6 or worse on a par 5. Par 5s are the easiest holes to score on, so giving one back hurts twice.'],
+ r2:['No double bogeys','A double bogey or worse on any hole. One big number wipes out a run of good holes.'],
+ r3:['No 3-putts','Three or more putts on a green. Lag it close and take your two.'],
+ r4:['No bogeys with a scoring club','You hit your approach with a wedge or short iron and still made bogey or worse. From there you should be making par.'],
+ r5:['No missed easy up-and-downs','A simple chip or pitch from just off the green that didn’t get up and down in two.'],
+};
+function aboutView(){
+ const help=(title,body)=>`<details class="help"><summary>${title}</summary><div>${body}</div></details>`;
+ let h=header('About','Sandie');
+ h+=`<div class="card abouthero"><b>Track Beers. Track Rips. Track Scores. <span>Get Paid.</span></b>
+  <p>Sandie is the golf app for groups who play for money. Score your whole group, log the side bets as you go, and walk off 18 knowing exactly who owes who.</p></div>`;
+ h+=`<h2>The Sandie 5</h2><div class="card"><p style="margin-top:0">Five mistakes cost amateur golfers more strokes than anything else. Avoid them and your scores drop, without changing your swing.</p>
+  <ol class="s5">${RULES.map(r=>{const [t,d]=SANDIE5_WHY[r.k]||[r.n,''];return `<li><b>${esc(t)}</b><span>${esc(d)}</span></li>`}).join('')}</ol>
+  <p class="hint" style="margin-bottom:0">Sandie checks the first three for you from your score and putts. For the last two, tap <b>Scoring club</b> or <b>Missed up &amp; down</b> on the hole.</p></div>`;
+ h+=`<h2>Your Rating</h2><div class="card"><p style="margin-top:0">Your profile rates you on Sandie 5 misses per 18 holes:</p>
+  <table><tbody><tr><td>👑 God Tier</td><td class="n">Under 3</td></tr><tr><td>🐐 Goated</td><td class="n">3–5</td></tr><tr><td>😐 Average</td><td class="n">Over 5</td></tr></tbody></table>
+  <p style="margin:12px 0 4px">Each finished round also earns a badge:</p>
+  <table><tbody><tr><td>🏆🏆🏆</td><td class="n">0 misses</td></tr><tr><td>🏆🏆</td><td class="n">1 miss</td></tr><tr><td>🏆</td><td class="n">2–3 misses</td></tr><tr><td>💩</td><td class="n">4–7 misses</td></tr><tr><td>💩💩</td><td class="n">8–10 misses</td></tr><tr><td>💩💩💩</td><td class="n">11 or more</td></tr></tbody></table></div>`;
+ h+=`<h2>How to Use Sandie</h2><div class="helps">
+ ${help('Scoring a round',`<p>Tap <b>Play</b>, pick the course and tees, and choose up to 3 friends in your group. On each hole, enter strokes and putts (they start at par and 2), then tap anything that applies: <b>Scoring club</b>, <b>Missed up &amp; down</b>, beers, shotguns, rips, thrown clubs and mushrooms.</p><p>Tap <b>Finish Round</b> on the last hole, check the summary, and post. Each friend’s round goes on their card, marked as scored by you. No signal? It saves on your phone and posts when you’re back online.</p>`)}
+ ${help('Handicap',`<p>Your Handicap Index follows the World Handicap System. Post 3 finished rounds with a course rating and slope and it appears; after that it uses your best differentials from the last 20. Courses in Sandie’s list fill in rating and slope for you.</p>`)}
+ ${help('Money games: Skins, Nassau and Wolf',`<p>When you pick friends on <b>Play</b>, turn on games under <b>Money Games</b> and set the stakes. Choose <b>Net</b> to use handicap strokes.</p><ul><li><b>Skins:</b> lowest score on a hole wins a skin from everyone; ties carry over if you turn that on.</li><li><b>Nassau:</b> everyone plays everyone, with bets on the front 9, back 9 and overall. Auto-press starts a new bet when someone goes 2 down.</li><li><b>Wolf</b> (3–4 players): the Wolf rotates each hole and picks a partner, goes Lone Wolf, or calls Blind Wolf. Tap the choice at the top of the hole.</li></ul><p>Standings update every hole. When you post, who pays whom is saved for everyone.</p>`)}
+ ${help('Trips',`<p>Plan a trip on <b>Trips</b> with dates and friends. Inside a trip:</p><ul><li><b>Tee Times:</b> plan each day’s groups. Copy a morning tee time for the afternoon round, and tap <b>Start This Round</b> on the day. Everyone gets a reminder the night before.</li><li><b>Leaderboard:</b> who’s on the course right now, and trip standings from to par to money to beers.</li><li><b>Bets:</b> fewest putts, low gross or net, most birdies and more, scored from trip rounds.</li><li><b>Receipts:</b> log who paid for what; Sandie splits it.</li></ul><p>The organizer taps <b>End Trip</b> to lock it in, and everyone gets their settle-up.</p>`)}
+ ${help('Betting Board',`<p>Post a bet for later, like “Jon breaks 80 at Whiskey Creek”, with 2–6 options. Friends pick a side and how much. Whoever posted it locks picks and settles it; losers pay what they bet, split among the winners.</p>`)}
+ ${help('Getting paid',`<p>Sandie never moves money; it keeps score of it. Everything you owe or are owed shows under <b>Unsettled</b> on your profile.</p><ul><li><b>Pay on Venmo</b> opens Venmo with the amount filled in.</li><li><b>I Paid</b> asks them to confirm. <b>Mark Paid</b> clears money someone paid you.</li><li><b>Remind</b> sends a nudge, once a day.</li></ul><p>Add your Venmo username in Settings so friends can pay you in one tap.</p>`)}
+ ${help('Feed and friends',`<p>The <b>Feed</b> shows your friends’ rounds. Like them, comment, or <b>Attest</b> that you saw it happen. Add friends on <b>Friends</b> by name, email or friend code, or share your invite link. People You May Know suggests friends of your friends.</p>`)}
+ ${help('Leaderboard and titles',`<p><b>Leaders</b> ranks you and your friends in every category. Lead one and you earn its title on your profile: Low Man, Beer Boss, Geeb God, Flat Stick and more. Some titles are a wall of shame.</p>`)}
+ ${help('Notifications',`<p>Turn them on in <b>Me → ⚙ Settings → Notifications</b> and pick which kinds you want. On iPhone, add Sandie to your Home Screen first (Safari → Share → Add to Home Screen) and open it from there.</p>`)}
+ ${help('Stats on the web',`<p>Sign in at <b>sandie.app</b> → Your Stats for bigger charts: handicap trend, scoring, putting, course history and more.</p>`)}
+ </div>`;
+ h+=`<p class="sub" style="text-align:center">Sandie ${esc(APP_VERSION)} · <a href="https://sandie.app" target="_blank" rel="noopener">sandie.app</a></p>`;
  return h;
 }
 
@@ -633,12 +672,12 @@ const LB_CATS=[
  {k:'hcp',label:'Handicap Index',title:'Low Man',emo:'🎯',low:true,fmt:fmtIdx,val:(rs,all)=>hcp(all).index,note:'Current index from the last 20 rated rounds (ignores the period filter).'},
  {k:'avg',label:'Avg Score',title:'Steady Eddie',emo:'📉',low:true,val:rs=>{const f=rs.filter(r=>r.complete&&r.n===18);return f.length?Math.round(f.reduce((a,r)=>a+r.score,0)/f.length*10)/10:null},note:'Average of finished 18-hole rounds.'},
  {k:'best',label:'Best Round',title:'Course Record',emo:'🔥',low:true,val:rs=>{const f=rs.filter(r=>r.complete&&r.n===18);return f.length?Math.min(...f.map(r=>r.score)):null},note:'Lowest finished 18-hole score.'},
- {k:'t5',label:'Tiger 5 Misses',title:'Tiger Tamer',emo:'🐯',low:true,fmt:v=>v.toFixed(1),val:rs=>per18(rs.filter(r=>r.complete),r=>r.t5),note:'Tiger 5 misses per 18 holes.'},
+ {k:'t5',label:'Sandie 5 Misses',title:'Tiger Tamer',emo:'🐯',low:true,fmt:v=>v.toFixed(1),val:rs=>per18(rs.filter(r=>r.complete),r=>r.t5),note:'Sandie 5 misses per 18 holes.'},
  {k:'putts',label:'Putts',title:'Flat Stick',emo:'🪄',low:true,fmt:v=>v.toFixed(1),val:rs=>per18(rs.filter(r=>r.complete&&r.putts!=null),r=>r.putts),note:'Putts per 18 holes (rounds with putts on every hole).'},
  {k:'birdies',label:'Birdies',title:'Birdie Machine',emo:'🐦',val:rs=>rs.reduce((a,r)=>a+(r.holes||[]).filter(h=>played(h)&&h.score<h.par).length,0),note:'Birdies or better, total.'},
  {k:'rounds',label:'Rounds Played',title:'Grinder',emo:'🗓️',val:rs=>rs.length,note:'Rounds posted.'},
- {k:'trophy',label:'🏆 Trophy Rounds',title:'Trophy Hunter',emo:'🏆',val:rs=>rs.filter(r=>r.complete&&r.t5<=3).length,note:'Finished rounds with 3 or fewer Tiger 5 misses.'},
- {k:'poo',label:'💩 Poo Rounds',title:'Poo Lord',emo:'💩',shame:true,val:rs=>rs.filter(r=>r.t5>=4).length,note:'Rounds with 4 or more Tiger 5 misses. Wall of shame.'},
+ {k:'trophy',label:'🏆 Trophy Rounds',title:'Trophy Hunter',emo:'🏆',val:rs=>rs.filter(r=>r.complete&&r.t5<=3).length,note:'Finished rounds with 3 or fewer Sandie 5 misses.'},
+ {k:'poo',label:'💩 Poo Rounds',title:'Poo Lord',emo:'💩',shame:true,val:rs=>rs.filter(r=>r.t5>=4).length,note:'Rounds with 4 or more Sandie 5 misses. Wall of shame.'},
  {k:'beer',label:'🍺 Beers',title:'Beer Boss',emo:'🍺',val:rs=>rs.reduce((a,r)=>a+holeSum(r,'beer'),0),note:'Beers logged on the course.'},
  {k:'shot',label:'💥 Shotguns',title:'Shotgun Sheriff',emo:'💥',val:rs=>rs.reduce((a,r)=>a+holeSum(r,'shot'),0),note:'Beers shotgunned. Counted inside the beer total too.'},
  {k:'gb',label:'💨 Rips',title:'Geeb God',emo:'💨',val:rs=>rs.reduce((a,r)=>a+holeSum(r,'gb'),0),note:'Rips logged on the course.'},
@@ -753,8 +792,8 @@ function playerView(id){
  const complete=rounds.filter(r=>r.complete),holes=complete.reduce((a,r)=>a+r.n,0);
  const t5per18=holes?complete.reduce((a,r)=>a+r.t5,0)/holes*18:null;
  const f18=complete.filter(r=>r.n===18);
- h+=`<div class="card big"><div><b>${fmtIdx(x.index)}</b><span>Handicap Index</span></div><div><b>${f18.length?Math.round(f18.reduce((a,r)=>a+r.score,0)/f18.length):'—'}</b><span>Avg 18-Hole Score</span></div><div><b>${t5per18==null?'—':t5per18.toFixed(1)}</b><span>Tiger 5 Misses per 18</span></div></div>`;
- // Rating from Tiger 5 misses per 18: under 3 God Tier, 3–5 Goated, above 5 Average.
+ h+=`<div class="card big"><div><b>${fmtIdx(x.index)}</b><span>Handicap Index</span></div><div><b>${f18.length?Math.round(f18.reduce((a,r)=>a+r.score,0)/f18.length):'—'}</b><span>Avg 18-Hole Score</span></div><div><b>${t5per18==null?'—':t5per18.toFixed(1)}</b><span>Sandie 5 Misses per 18</span></div></div>`;
+ // Rating from Sandie 5 misses per 18: under 3 God Tier, 3–5 Goated, above 5 Average.
  // Leaderboard leaders also get title badges (Low Man, Beer Boss, Geeb God and the rest).
  if(t5per18!=null){const v=Math.round(t5per18*10)/10,tier=v<3?0:v<=5?1:2;
   const tiers=[['👑','God Tier','Under 3'],['🐐','Goated','3–5'],['😐','Average','5+']];
@@ -763,7 +802,7 @@ function playerView(id){
   h+=`<div class="card rating">
    <div class="rtop"><span class="remo" aria-hidden="true">${tiers[tier][0]}</span>
     <div class="rmid"><span class="rl">Rating</span><b class="rname${tier<2?' pos':''}">${tiers[tier][1]}</b></div>
-    <div class="rnum"><b>${v.toFixed(1)}</b><span>Tiger 5 misses<br>per 18</span></div></div>
+    <div class="rnum"><b>${v.toFixed(1)}</b><span>Sandie 5 misses<br>per 18</span></div></div>
    <div class="rscale" role="list" aria-label="Rating scale">${tiers.map(([e,l,r],i)=>`<div role="listitem" class="${i===tier?'on':''}"${i===tier?' aria-current="true"':''}><b>${l}</b><span>${r}</span></div>`).join('')}</div>
    ${(()=>{const ts=leaderTitles(id);return ts.length?`<div class="rbadges">${ts.map(c=>{const what=c.label.replace(/^[^A-Za-z]+/,''),tip=`${c.title}: leads ${what} (${(c.fmt||String)(c.value)})`;return `<button class="rbadge${c.shame?' shame':''}" data-badgetip="${esc(tip)}" aria-label="${esc(tip)}"><span aria-hidden="true">${c.emo}</span>${esc(c.title)}</button>`}).join('')}</div>`:''})()}
   </div>`;}
@@ -790,7 +829,7 @@ function roundView(key){
  let h=header(r.course,(mine?'You':handle(u))+' · '+fmtDate(r.date));
  h+=`<button class="item plain" style="margin:0 0 8px" data-player="${esc(u)}">${av(u)}<div class="mid"><b>${esc(mine?'You':handle(u))}</b><span>View profile${scorer?' · Scored by '+esc(scorer===S.me?'you':handle(scorer)):''}</span></div></button>`;
  h+=`<p class="sub">${r.tee?esc(r.tee)+' tees · ':''}${r.rating?`${r.rating}/${r.slope}`:'No rating'}${r.n===9?' · 9 holes':''}${x.used.has(r.id)?' · <span class="tag">Counts toward index</span>':''}</p>`;
- h+=`<div class="card big"><div><b>${r.score}</b><span>${r.complete?rel(r.score-r.parPlayed)+' to par':r.holesPlayed+' holes'}</span></div><div><b>${r.net!=null?r.net:'—'}</b><span>Net${r.ch!=null?` (CH ${r.ch})`:''}</span></div><div><b>${fmtDiff(r.diff)}</b><span>Differential</span></div><div><b>${r.t5}</b><span>Tiger 5</span></div></div>`;
+ h+=`<div class="card big"><div><b>${r.score}</b><span>${r.complete?rel(r.score-r.parPlayed)+' to par':r.holesPlayed+' holes'}</span></div><div><b>${r.net!=null?r.net:'—'}</b><span>Net${r.ch!=null?` (CH ${r.ch})`:''}</span></div><div><b>${fmtDiff(r.diff)}</b><span>Differential</span></div><div><b>${r.t5}</b><span>Sandie 5</span></div></div>`;
  const hs=r.holes||[],start=r.nine==='back'?10:1;
  const rows=(from,to)=>{const sl=hs.slice(from,to);if(!sl.length)return'';const sum=(f)=>sl.reduce((a,h)=>a+(f(h)||0),0);
   return `<div class="scroll" style="margin-bottom:8px"><table class="sc"><tr><th>Hole</th>${sl.map((_,i)=>`<th>${start+from+i}</th>`).join('')}<th>Tot</th></tr>
@@ -802,8 +841,8 @@ function roundView(key){
   ${holeSum(r,'shot')?`<tr><td>Shotgun 💥</td>${sl.map(h=>`<td>${h.shot||''}</td>`).join('')}<td>${sum(h=>h.shot)}</td></tr>`:''}
   ${holeSum(r,'club')?`<tr><td>Thrown 🪃</td>${sl.map(h=>`<td>${h.club||''}</td>`).join('')}<td>${sum(h=>h.club)}</td></tr>`:''}
   ${holeSum(r,'mush')?`<tr><td>Mush 🍄</td>${sl.map(h=>`<td>${h.mush||''}</td>`).join('')}<td>${sum(h=>h.mush)}</td></tr>`:''}</table></div>`};
- h+=`<div class="card">${rows(0,9)}${rows(9,18)}<p class="hint" style="margin:0">Red holes broke a Tiger 5 rule. Green holes were under par.</p></div>`;
- h+=`<h2>Tiger 5</h2><div class="card"><table>`;
+ h+=`<div class="card">${rows(0,9)}${rows(9,18)}<p class="hint" style="margin:0">Red holes broke a Sandie 5 rule. Green holes were under par.</p></div>`;
+ h+=`<h2>Sandie 5</h2><div class="card"><table>`;
  RULES.forEach(q=>{const c=(r.per&&r.per[q.k])||0;h+=`<tr><td>${q.n}<div class="bar"><i style="width:${r.holesPlayed?Math.min(100,c/r.holesPlayed*300):0}%"></i></div></td><td class="n">${c}</td></tr>`});
  h+=`</table></div>`;
  if(!r.pending){
@@ -833,7 +872,7 @@ const BET_KINDS={
  putts:{label:'Fewest putts',low:true,val:r=>r.putts},
  gross:{label:'Lowest total score',low:true,val:r=>r.score},
  net:{label:'Lowest net score',low:true,val:r=>r.net},
- t5:{label:'Fewest Tiger 5 misses',low:true,val:r=>r.t5},
+ t5:{label:'Fewest Sandie 5 misses',low:true,val:r=>r.t5},
  birdies:{label:'Most birdies',low:false,val:r=>(r.holes||[]).filter(h=>played(h)&&h.score<h.par).length},
  three_putts:{label:'Fewest 3-putts',low:true,val:r=>(r.holes||[]).filter(h=>played(h)&&h.putts>=3).length},
  best_round:{label:'Best single round',low:true,single:true},
@@ -1098,7 +1137,7 @@ const TRIP_CATS=[
  {k:'avg',label:'Avg 18',low:true,fmt:v=>v.toFixed(1),val:rs=>{const f=rs.filter(r=>r.n===18);return f.length?Math.round(f.reduce((a,r)=>a+r.score,0)/f.length*10)/10:null},note:'Average 18-hole score on the trip.'},
  {k:'money',label:'Money',fmt:v=>(v>0?'+':v<0?'−':'')+fmtMoney(v),money:true,note:'Trip bets as they stand now, plus Skins and Nassau won on trip rounds.'},
  {k:'birdies',label:'Birdies',val:rs=>rs.reduce((a,r)=>a+(r.holes||[]).filter(h=>played(h)&&h.score<h.par).length,0),note:'Birdies or better.'},
- {k:'t5',label:'Tiger 5',low:true,fmt:v=>v.toFixed(1),val:rs=>per18(rs,r=>r.t5),note:'Tiger 5 misses per 18 holes.'},
+ {k:'t5',label:'Sandie 5',low:true,fmt:v=>v.toFixed(1),val:rs=>per18(rs,r=>r.t5),note:'Sandie 5 misses per 18 holes.'},
  {k:'putts',label:'Putts',low:true,fmt:v=>v.toFixed(1),val:rs=>per18(rs.filter(r=>r.putts!=null),r=>r.putts),note:'Putts per 18 holes.'},
  {k:'beer',label:'🍺 Beers',all:true,val:rs=>rs.reduce((a,r)=>a+holeSum(r,'beer'),0),note:'Beers logged on trip rounds.'},
  {k:'gb',label:'💨 Rips',all:true,val:rs=>rs.reduce((a,r)=>a+holeSum(r,'gb'),0),note:'Rips logged on trip rounds.'},
@@ -1721,14 +1760,14 @@ function gamesSetup(){
 function summaryView(){
  const ix=S.status==='ready'?myIndex():null,t=calc(draft,ix);
  let s=`${header('Round Summary',draft.course+' · '+fmtDate(draft.date))}
- <div class="card big"><div><b>${t.score}</b><span>Strokes (${rel(t.score-t.parPlayed)})</span></div><div><b>${t.net!=null?t.net:'—'}</b><span>Net${t.ch!=null?' (CH '+t.ch+')':''}</span></div><div><b>${t.putts==null?'—':t.putts}</b><span>Putts</span></div><div><b>${t.t5}</b><span>Tiger 5 Misses</span></div></div>
+ <div class="card big"><div><b>${t.score}</b><span>Strokes (${rel(t.score-t.parPlayed)})</span></div><div><b>${t.net!=null?t.net:'—'}</b><span>Net${t.ch!=null?' (CH '+t.ch+')':''}</span></div><div><b>${t.putts==null?'—':t.putts}</b><span>Putts</span></div><div><b>${t.t5}</b><span>Sandie 5 Misses</span></div></div>
  ${holeSum(draft,'beer')||holeSum(draft,'gb')?`<div class="tags" style="margin:-2px 0 10px">${extrasTags(draft)}</div>`:''}
  <div class="card"><table>`;
  RULES.forEach(r=>{const c=t.per[r.k];s+=`<tr><td>${r.n}<div class="bar"><i style="width:${t.holesPlayed?Math.min(100,c/t.holesPlayed*300):0}%"></i></div></td><td class="n">${c}</td></tr>`});
  s+=`</table></div>
  <div class="card"><b>Handicap</b><p class="hint" style="margin-top:4px">${t.diff!=null?`Score differential <b>${fmtDiff(t.diff)}</b> (adjusted gross ${t.ags}). It counts toward your index once posted.`:!t.complete?`You’ve scored ${t.holesPlayed} of ${t.n} holes. Unfinished rounds post, but don’t count toward a handicap.`:'No course rating and slope, so this round won’t count toward a handicap.'}</p></div>`;
  if((draft.others||[]).length){
-  s+=`<h2>Your Group</h2><div class="card"><table><thead><tr><th>Player</th><th class="n">Score</th><th class="n">Putts</th><th class="n">Tiger 5</th><th class="n">Diff</th></tr></thead><tbody>${draft.others.map(o=>{const x=calc(otherRound(o),hcp(S.rounds[o.uid]).index);return `<tr><td>${withPic(o.uid,handle(o.uid))}</td><td class="n">${x.score} <span style="font-weight:400;color:var(--mute)">${rel(x.score-x.parPlayed)}</span></td><td class="n" style="font-weight:400">${x.putts==null?'—':x.putts}</td><td class="n" style="font-weight:400">${x.t5}</td><td class="n" style="font-weight:400">${fmtDiff(x.diff)}</td></tr>`}).join('')}</tbody></table>
+  s+=`<h2>Your Group</h2><div class="card"><table><thead><tr><th>Player</th><th class="n">Score</th><th class="n">Putts</th><th class="n">Sandie 5</th><th class="n">Diff</th></tr></thead><tbody>${draft.others.map(o=>{const x=calc(otherRound(o),hcp(S.rounds[o.uid]).index);return `<tr><td>${withPic(o.uid,handle(o.uid))}</td><td class="n">${x.score} <span style="font-weight:400;color:var(--mute)">${rel(x.score-x.parPlayed)}</span></td><td class="n" style="font-weight:400">${x.putts==null?'—':x.putts}</td><td class="n" style="font-weight:400">${x.t5}</td><td class="n" style="font-weight:400">${fmtDiff(x.diff)}</td></tr>`}).join('')}</tbody></table>
   <p class="hint">Posting adds each friend’s round to their card, marked as scored by you. They can delete it if something’s wrong.</p></div>`;
   s+=gamesCard(draftGames());
  }
@@ -1744,7 +1783,7 @@ function go(view,arg){
  rememberPlace();render();
 }
 // Refreshing keeps you on the same page (and trip section); a fresh launch starts on the Feed.
-const VIEWS=['feed','play','trips','trip','newtrip','board','newbet','leaders','settings','friends','player','round'];
+const VIEWS=['feed','play','trips','trip','newtrip','board','newbet','leaders','settings','friends','player','round','about'];
 function rememberPlace(){try{sessionStorage.setItem('t19-place',JSON.stringify({view:S.view,arg:S.arg,tripTabs:S.tripTabs,tripsFilter:S.tripsFilter||null}))}catch(e){}}
 try{
  const p=JSON.parse(sessionStorage.getItem('t19-place')||'null');
