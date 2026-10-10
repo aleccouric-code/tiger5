@@ -167,6 +167,7 @@ async function loadAll(){
   }
   S.rounds=rounds;addPendingLocal();
   await loadSocial(rounds);
+  try{const {data:pm,error:pe}=await sb.from('payments').select('*').order('created_at',{ascending:false}).limit(1000);if(!pe)S.payments=pm||[]}catch(e){}
   // People You May Know (friends of friends). Their names and photos join the profiles list so av() works.
   try{const {data:sg,error:se}=await sb.rpc('suggested_friends');if(!se){S.suggest=sg||[];S.suggest.forEach(p=>{if(!S.profiles[p.id])S.profiles[p.id]={id:p.id,handle:p.handle,avatar_url:p.avatar_url}})}}catch(e){}
   try{const {data:vp,error:ve}=await sb.from('profile_private').select('id,venmo');if(!ve){S.venmo={};(vp||[]).forEach(v=>{if(v.venmo)S.venmo[v.id]=v.venmo})}}catch(e){}
@@ -443,7 +444,7 @@ function roundItem(r,showWho=true){
   <div class="score"><b>${r.score}</b><span>${r.complete?rel(r.score-r.parPlayed):r.holesPlayed+' holes'}</span></div></button>`;
 }
 /* ---------- settings ---------- */
-const APP_VERSION='v39';
+const APP_VERSION='v40';
 const GEAR=`<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.86a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1Z"/></svg>`;
 // Settings: grouped like a phone's settings app. Profile, Payments, Account, About.
 function settingsView(){
@@ -757,6 +758,7 @@ function playerView(id){
    <div class="rscale" role="list" aria-label="Rating scale">${tiers.map(([e,l,r],i)=>`<div role="listitem" class="${i===tier?'on':''}"${i===tier?' aria-current="true"':''}><b>${l}</b><span>${r}</span></div>`).join('')}</div>
    ${(()=>{const ts=leaderTitles(id);return ts.length?`<div class="rbadges">${ts.map(c=>{const what=c.label.replace(/^[^A-Za-z]+/,''),tip=`${c.title}: leads ${what} (${(c.fmt||String)(c.value)})`;return `<button class="rbadge${c.shame?' shame':''}" data-badgetip="${esc(tip)}" aria-label="${esc(tip)}"><span aria-hidden="true">${c.emo}</span>${esc(c.title)}</button>`}).join('')}</div>`:''})()}
   </div>`;}
+ if(mineView)h+=unsettledCard();
  if(S.photoView===id&&photoOf(id))h+=`<div class="overlay photo-ov" role="dialog" aria-label="Profile photo" data-act="closephoto"><div class="row" style="flex:none"><b style="color:#fff">${esc(mineView?'You':handle(id))}</b><button data-act="closephoto" style="flex:none">Close</button></div><img src="${esc(photoOf(id))}" alt="${esc(handle(id))}"></div>`;
  if(x.index==null)h+=`<p class="sub">${x.rs.length?`${x.need} more rated round${x.need>1?'s':''} until ${mineView?'your':'their'} index is set.`:'Post 3 complete rounds with a course rating and slope to get an index.'}</p>`;
  if(x.rs.length)h+=`<div class="card"><b>Last ${x.rs.length} Differentials</b>${diffChart(x)}<p class="hint" style="margin-top:4px">${x.index!=null?`Green bars are the ${x.take} lowest; they set the index (dashed line).`:'Differentials so far.'}</p></div>`;
@@ -883,11 +885,13 @@ function settleBets(t){
   mem.forEach(u=>net[u]-=stake);
   const share=stake*mem.length/w.length;w.forEach(u=>net[u]+=share);
  });
+ applyPaid(net,'bets',t.id);
  return{net,pays:fewestPayments(net)};
 }
 function settleReceipts(t){
  const mem=S.tripMembers[t.id]||[],ex=expenseTotals(t),net={};
  mem.forEach(u=>net[u]=Math.round((ex.paid[u]-ex.share[u])*100)/100);
+ applyPaid(net,'receipts',t.id);
  return{net,pays:fewestPayments(net)};
 }
 function fewestPayments(net){
@@ -980,7 +984,7 @@ function tripView(id){
  if(tab==='gb')h+=extrasBoard(t,'gb','💨','rip','rips');
 
  // Bets settle up at the bottom of Bets; receipts have their own under Receipts.
- if(tab==='bets'&&bets.some(b=>+b.stake>0))h+=settleCard(t,settleBets(t),st==='done'?'Settle Up Bets':'Settle Up Bets (If the Trip Ended Now)','Bets only. Receipts settle up separately under Receipts.');
+ if(tab==='bets'&&bets.some(b=>+b.stake>0))h+=settleCard(t,settleBets(t),st==='done'?'Settle Up Bets':'Settle Up Bets (If the Trip Ended Now)','Bets only. Receipts settle up separately under Receipts.','bets');
 
  if(tab==='rounds')h+=rs.length?rs.map(r=>roundItem(r)).join(''):`<div class="card empty"><b>No Rounds Yet</b>Finished rounds posted ${fmtRange(t)} show up here.</div>`;
 
@@ -1014,19 +1018,21 @@ function extrasBoard(t,key,emoji,one,many){
  <p class="hint">Counted from the ${emoji} ${many} entered hole by hole on rounds posted ${fmtRange(t)}.</p></div>`;
  return h;
 }
-function settleCard(t,sv,title,note){
+function settleCard(t,sv,title,note,ledger){
  const mem=S.tripMembers[t.id]||[],who=(u)=>u===S.me?'You':handle(u);
  const sgn=(v)=>{v=Math.round((v||0)*100)/100;return `<span class="${v>0?'pos':v<0?'neg':''}">${v>0?'+':v<0?'−':''}${fmtMoney(v)}</span>`};
+ const c={ledger,trip:t.id,note:t.name+' '+ledger+' (Sandie)'};
  return `<h2>${esc(title)}</h2><div class="card">`
-  +(sv.pays.length?`<table><tbody>${sv.pays.map(p=>`<tr><td>${av(p.from,'xs')} ${esc(who(p.from))} pay${p.from===S.me?'':'s'} ${esc(p.to===S.me?'you':handle(p.to))}</td><td class="n">${fmtMoney(p.amt)}${p.from===S.me?venmoLink(p.to,'Venmo'):p.to===S.me?`<button class="nudge" data-act="nudge" data-u="${esc(p.from)}" data-amt="${p.amt}" data-trip="${esc(t.id)}">Remind</button>`:''}</td></tr>`).join('')}</tbody></table>`:`<p style="margin:0">Nobody owes anything yet.</p>`)
-  +`<p class="hint">Net: ${mem.map(u=>`${esc(who(u))} ${sgn(sv.net[u])}`).join(' · ')}</p><p class="hint">${esc(note)} The app only keeps track; settle up however your group pays each other.</p></div>`;
+  +(sv.pays.length?`<table><tbody>${sv.pays.map(p=>debtRow(p,c)).join('')}</tbody></table>`:`<p style="margin:0">${ledgerPays(ledger,t.id).some(p=>p.confirmed)?'Everyone’s square. ✓':'Nobody owes anything yet.'}</p>`)
+  +paidList(ledger,t.id)
+  +`<p class="hint">Still owed: ${mem.map(u=>`${esc(who(u))} ${sgn(sv.net[u])}`).join(' · ')}</p><p class="hint">${esc(note)} Sandie keeps track; mark payments paid here once they’re made.</p></div>`;
 }
 function expensesSection(t,mem,who){
  const list=S.expenses[t.id]||[],ex=expenseTotals(t),total=list.reduce((a,e)=>a+e.amount,0);
  let h='';
  if(list.length){
   h+=`<div class="card"><div class="bet-head"><b>Trip Spending</b><span class="money">${fmtMoney(total)}</span></div><table style="margin-top:6px"><thead><tr><th>Player</th><th class="n">Paid</th><th class="n">Their share</th></tr></thead><tbody>${mem.map(u=>`<tr><td>${withPic(u,who(u))}</td><td class="n" style="font-weight:400">${fmtMoney(ex.paid[u]||0)}</td><td class="n">${fmtMoney(ex.share[u]||0)}</td></tr>`).join('')}</tbody></table></div>`;
-  h+=settleCard(t,settleReceipts(t),'Settle Up Receipts','Receipts only: what each person paid minus their share.');
+  h+=settleCard(t,settleReceipts(t),'Settle Up Receipts','Receipts only: what each person paid minus their share.','receipts');
   h+=`<h2>All Receipts</h2>`;
   list.forEach(e=>{
    const split=(e.split_among||[]).filter(u=>mem.includes(u)),canDel=e.created_by===S.me||e.paid_by===S.me||t.created_by===S.me;
@@ -1186,7 +1192,57 @@ function boardBalances(){
  const bal={};
  S.board.forEach(b=>{const p=boardPayout(b);if(!p)return;p.pays.forEach(x=>{
   if(x.from===S.me)bal[x.to]=(bal[x.to]||0)-x.amt;else if(x.to===S.me)bal[x.from]=(bal[x.from]||0)+x.amt;})});
+ ledgerPays('board').forEach(p=>{if(!p.confirmed)return;if(p.payer===S.me)bal[p.payee]=(bal[p.payee]||0)+ +p.amount;else if(p.payee===S.me)bal[p.payer]=(bal[p.payer]||0)- +p.amount});
  return Object.entries(bal).map(([u,v])=>[u,Math.round(v*100)/100]).filter(([,v])=>Math.abs(v)>=0.01).sort((a,b)=>b[1]-a[1]);
+}
+
+/* ---------- settling up ---------- */
+// Payments people have marked paid (supabase/payments.sql). Confirmed ones count against
+// what's owed in their ledger: a trip's bets or receipts, the Betting Board, or money games.
+const ledgerPays=(ledger,trip)=>(S.payments||[]).filter(p=>p.ledger===ledger&&(trip?p.trip_id===trip:!p.trip_id));
+function applyPaid(net,ledger,trip){
+ ledgerPays(ledger,trip).forEach(p=>{if(p.confirmed&&p.payer in net&&p.payee in net){net[p.payer]+=+p.amount;net[p.payee]-=+p.amount}});
+}
+// Opens Venmo with the amount and a note already filled in.
+const venmoPay=(u,amt,note)=>S.venmo&&S.venmo[u]?`<a class="venmo" href="https://venmo.com/?txn=pay&audience=private&recipients=${encodeURIComponent(S.venmo[u])}&amount=${(Math.round(amt*100)/100).toFixed(2)}&note=${encodeURIComponent(note)}" target="_blank" rel="noopener">Pay on Venmo</a>`:'';
+// One "who pays whom" line, with what you can do about it.
+function debtRow(p,c){
+ const who=u=>u===S.me?'You':handle(u),att=`data-amt="${p.amt}" data-ledger="${c.ledger}"${c.trip?` data-tid="${esc(c.trip)}"`:''}`;
+ const claim=(S.payments||[]).find(x=>!x.confirmed&&x.payer===p.from&&x.payee===p.to&&x.ledger===c.ledger&&(c.trip?x.trip_id===c.trip:!x.trip_id));
+ let act='';
+ if(p.from===S.me)act=claim?`<span class="hint" style="margin:0">You said you paid ${fmtMoney(+claim.amount)}. Waiting for ${esc(handle(p.to))} to confirm.</span><button class="nudge" data-act="undopay" data-id="${esc(claim.id)}">Undo</button>`
+  :venmoPay(p.to,p.amt,c.note)+`<button class="nudge" data-act="ipaid" data-u="${esc(p.to)}" ${att}>I Paid</button>`;
+ else if(p.to===S.me)act=claim?`<span class="hint" style="margin:0"><b>${esc(handle(p.from))} says they paid ${fmtMoney(+claim.amount)}.</b></span><button class="nudge go" data-act="confirmpay" data-id="${esc(claim.id)}">Confirm</button><button class="nudge" data-act="undopay" data-id="${esc(claim.id)}">Not Yet</button>`
+  :`<button class="nudge go" data-act="markpaid" data-u="${esc(p.from)}" ${att}>Mark Paid</button><button class="nudge" data-act="nudge" data-u="${esc(p.from)}" ${att}>Remind</button>`;
+ return `<tr><td>${av(p.from,'xs')} ${esc(who(p.from))} pay${p.from===S.me?'':'s'} ${esc(p.to===S.me?'you':handle(p.to))}${c.where?`<span class="dwhere">${esc(c.where)}</span>`:''}${act?`<div class="dact">${act}</div>`:''}</td><td class="n">${fmtMoney(p.amt)}</td></tr>`;
+}
+// Payments already made in a ledger (newest first), with Undo for whoever can.
+function paidList(ledger,trip){
+ const list=ledgerPays(ledger,trip).filter(p=>p.confirmed).sort((a,b)=>b.created_at.localeCompare(a.created_at)).slice(0,8);
+ if(!list.length)return '';
+ const who=u=>u===S.me?'You':handle(u);
+ return `<p class="hint" style="margin-bottom:4px"><b>Paid</b></p><ul class="paid">${list.map(p=>`<li>✓ ${esc(who(p.payer))} paid ${esc(p.payee===S.me?'you':handle(p.payee))} ${fmtMoney(+p.amount)} <span class="hint" style="margin:0">${fmtDate((p.confirmed_at||p.created_at).slice(0,10))}</span>${p.payee===S.me||p.created_by===S.me?`<button class="link" data-act="undopay" data-id="${esc(p.id)}">Undo</button>`:''}</li>`).join('')}</ul>`;
+}
+// Everything you owe or are owed, across finished trips, trip receipts and the Board.
+function unsettledCard(){
+ const lines=[];
+ S.trips.forEach(t=>{if(!(S.tripMembers[t.id]||[]).includes(S.me))return;
+  const sets=[['receipts',settleReceipts,'Receipts']];if(tripStatus(t)==='done')sets.unshift(['bets',settleBets,'Bets']);
+  sets.forEach(([lg,fn,lab])=>fn(t).pays.forEach(p=>{if(p.from===S.me||p.to===S.me)lines.push([p,{ledger:lg,trip:t.id,note:t.name+' '+lab.toLowerCase()+' (Sandie)',where:t.name+' · '+lab}])}));
+ });
+ boardBalances().forEach(([u,v])=>lines.push([v>0?{from:u,to:S.me,amt:v}:{from:S.me,to:u,amt:-v},{ledger:'board',note:'Betting Board (Sandie)',where:'Betting Board'}]));
+ if(!lines.length)return '';
+ const owe=lines.filter(([p])=>p.from===S.me).reduce((a,[p])=>a+p.amt,0),owed=lines.filter(([p])=>p.to===S.me).reduce((a,[p])=>a+p.amt,0);
+ return `<h2>Unsettled</h2><div class="card"><div class="bet-head"><b>${[owe?'You owe '+fmtMoney(owe):'',owed?'You’re owed '+fmtMoney(owed):''].filter(Boolean).join(' · ')}</b></div>
+  <table style="margin-top:6px"><tbody>${lines.map(([p,c])=>debtRow(p,c)).join('')}</tbody></table></div>`;
+}
+async function recordPayment(d,received){
+ const row={payer:received?d.u:S.me,payee:received?S.me:d.u,amount:+d.amt,ledger:d.ledger,trip_id:d.tid||null,confirmed:received,created_by:S.me};
+ if(received)row.confirmed_at=new Date().toISOString();
+ const {error}=await sb.from('payments').insert(row);
+ if(error)return fail(error,'Couldn’t record that payment.');
+ toast(received?'Marked paid. '+handle(d.u)+' gets a notification.':'Sent to '+handle(d.u)+' to confirm.');
+ return loadAll();
 }
 function boardView(){
  let h=header('Betting Board');
@@ -1195,7 +1251,7 @@ function boardView(){
  const bal=boardBalances();
  if(bal.length){
   const net=bal.reduce((a,[,v])=>a+v,0);
-  h+=`<div class="card"><div class="bet-head"><b>Your Board Balance</b><span class="money ${net>0?'pos':net<0?'neg':''}">${net>0?'+':net<0?'−':''}${fmtMoney(net)}</span></div><table style="margin-top:6px"><tbody>${bal.map(([u,v])=>`<tr><td>${v>0?esc(handle(u))+' owes you':'You owe '+esc(handle(u))}</td><td class="n ${v>0?'pos':'neg'}">${fmtMoney(v)}${v<0?venmoLink(u,'Venmo'):`<button class="nudge" data-act="nudge" data-u="${esc(u)}" data-amt="${v}">Remind</button>`}</td></tr>`).join('')}</tbody></table><p class="hint">Totals from every settled bet. Settle up however your group pays each other.</p></div>`;
+  h+=`<div class="card"><div class="bet-head"><b>Your Board Balance</b><span class="money ${net>0?'pos':net<0?'neg':''}">${net>0?'+':net<0?'−':''}${fmtMoney(net)}</span></div><table style="margin-top:6px"><tbody>${bal.map(([u,v])=>debtRow(v>0?{from:u,to:S.me,amt:v}:{from:S.me,to:u,amt:-v},{ledger:'board',note:'Betting Board (Sandie)'})).join('')}</tbody></table>${paidList('board')}<p class="hint">Totals from every settled bet, minus payments marked paid.</p></div>`;
  }
  if(!S.board.length)return h+`<div class="card empty"><b>Nothing on the Board Yet</b>Post a bet for later, like “Jon breaks 80 at Whiskey Creek”. Your friends see it and pick a side.</div>`;
  [['open','Taking Picks'],['locked','Picks Locked, Waiting on the Result'],['settled','Settled'],['void','Called Off']].forEach(([st,label])=>{
@@ -1526,7 +1582,10 @@ document.addEventListener('click',async e=>{
  if(d.pushcat)return pushCat(d.pushcat);
  if(a==='pushon')return pushOn();
  if(a==='pushoff')return pushOff();
- if(a==='nudge'){b.disabled=true;await nudge(d.u,+d.amt,d.trip);b.disabled=false;return}
+ if(a==='nudge'){b.disabled=true;await nudge(d.u,+d.amt,d.tid);b.disabled=false;return}
+ if(a==='markpaid'||a==='ipaid'){b.disabled=true;return recordPayment(d,a==='markpaid')}
+ if(a==='confirmpay'){b.disabled=true;const {error}=await sb.from('payments').update({confirmed:true,confirmed_at:new Date().toISOString()}).eq('id',d.id);if(error)return fail(error,'Couldn’t confirm that payment.');toast('Payment confirmed');return loadAll()}
+ if(a==='undopay'){b.disabled=true;const {error}=await sb.from('payments').delete().eq('id',d.id);if(error)return fail(error,'Couldn’t remove that payment.');toast('Payment removed');return loadAll()}
  if(d.lbper){S.lbPeriod=d.lbper;return render()}
  if(d.lbcat){S.lbCat=d.lbcat;return render()}
  if(d.viewphoto){S.photoView=d.viewphoto;return render()}
