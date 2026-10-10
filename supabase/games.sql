@@ -69,7 +69,7 @@ begin
 
   elsif new.kind = 'title' then
     select x.t, x.e into ttl, emo from (values
-      ('hcp','Low Man','🎯'),('avg','Steady Eddie','📉'),('best','Course Record','🔥'),('t5','Tiger Tamer','🐯'),
+      ('hcp','Low Man','🎯'),('avg','Steady Eddie','📉'),('best','Course Record','🔥'),('t5','Clean Card','✨'),
       ('putts','Flat Stick','🪄'),('birdies','Birdie Machine','🐦'),('rounds','Grinder','🗓️'),('trophy','Trophy Hunter','🏆'),
       ('poo','Poo Lord','💩'),('beer','Beer Boss','🍺'),('shot','Shotgun Sheriff','💥'),('gb','Geeb God','💨'),
       ('club','Club Chucker','🪃'),('mush','Mush Man','🍄')) as x(k, t, e) where x.k = new.title_k;

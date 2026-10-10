@@ -454,7 +454,7 @@ function roundItem(r,showWho=true){
   <div class="score"><b>${r.score}</b><span>${r.complete?rel(r.score-r.parPlayed):r.holesPlayed+' holes'}</span></div></button>`;
 }
 /* ---------- settings ---------- */
-const APP_VERSION='v47';
+const APP_VERSION='v48';
 const GEAR=`<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.86a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1Z"/></svg>`;
 // Settings: grouped like a phone's settings app. Profile, Payments, Account, About.
 function settingsView(){
@@ -505,7 +505,8 @@ function aboutView(){
   <p>Sandie is the golf app for groups who play for money. Score your whole group, log the side bets as you go, and walk off 18 knowing exactly who owes who.</p></div>`;
  h+=`<h2>The Sandie 5</h2><div class="card"><p style="margin-top:0">Five mistakes cost amateur golfers more strokes than anything else. Avoid them and your scores drop, without changing your swing.</p>
   <ol class="s5">${RULES.map(r=>{const [t,d]=SANDIE5_WHY[r.k]||[r.n,''];return `<li><b>${esc(t)}</b><span>${esc(d)}</span></li>`}).join('')}</ol>
-  <p class="hint" style="margin-bottom:0">Sandie checks the first three for you from your score and putts. For the last two, tap <b>Scoring club</b> or <b>Missed up &amp; down</b> on the hole.</p></div>`;
+  <p class="hint">Sandie checks the first three for you from your score and putts. For the last two, tap <b>Scoring club</b> or <b>Missed up &amp; down</b> on the hole.</p>
+  <p class="hint" style="margin-bottom:0">The Sandie 5 builds on the “Tiger 5” stat popularized by golf strategist Scott Fawcett.</p></div>`;
  h+=`<h2>Your Rating</h2><div class="card"><p style="margin-top:0">Your profile rates you on Sandie 5 misses per 18 holes:</p>
   <table><tbody><tr><td>👑 God Tier</td><td class="n">Under 3</td></tr><tr><td>🐐 Goated</td><td class="n">3–5</td></tr><tr><td>😐 Average</td><td class="n">Over 5</td></tr></tbody></table>
   <p style="margin:12px 0 4px">Each finished round also earns a badge:</p>
@@ -672,7 +673,7 @@ const LB_CATS=[
  {k:'hcp',label:'Handicap Index',title:'Low Man',emo:'🎯',low:true,fmt:fmtIdx,val:(rs,all)=>hcp(all).index,note:'Current index from the last 20 rated rounds (ignores the period filter).'},
  {k:'avg',label:'Avg Score',title:'Steady Eddie',emo:'📉',low:true,val:rs=>{const f=rs.filter(r=>r.complete&&r.n===18);return f.length?Math.round(f.reduce((a,r)=>a+r.score,0)/f.length*10)/10:null},note:'Average of finished 18-hole rounds.'},
  {k:'best',label:'Best Round',title:'Course Record',emo:'🔥',low:true,val:rs=>{const f=rs.filter(r=>r.complete&&r.n===18);return f.length?Math.min(...f.map(r=>r.score)):null},note:'Lowest finished 18-hole score.'},
- {k:'t5',label:'Sandie 5 Misses',title:'Tiger Tamer',emo:'🐯',low:true,fmt:v=>v.toFixed(1),val:rs=>per18(rs.filter(r=>r.complete),r=>r.t5),note:'Sandie 5 misses per 18 holes.'},
+ {k:'t5',label:'Sandie 5 Misses',title:'Clean Card',emo:'✨',low:true,fmt:v=>v.toFixed(1),val:rs=>per18(rs.filter(r=>r.complete),r=>r.t5),note:'Sandie 5 misses per 18 holes.'},
  {k:'putts',label:'Putts',title:'Flat Stick',emo:'🪄',low:true,fmt:v=>v.toFixed(1),val:rs=>per18(rs.filter(r=>r.complete&&r.putts!=null),r=>r.putts),note:'Putts per 18 holes (rounds with putts on every hole).'},
  {k:'birdies',label:'Birdies',title:'Birdie Machine',emo:'🐦',val:rs=>rs.reduce((a,r)=>a+(r.holes||[]).filter(h=>played(h)&&h.score<h.par).length,0),note:'Birdies or better, total.'},
  {k:'rounds',label:'Rounds Played',title:'Grinder',emo:'🗓️',val:rs=>rs.length,note:'Rounds posted.'},
