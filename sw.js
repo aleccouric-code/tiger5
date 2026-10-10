@@ -1,6 +1,6 @@
 // Service worker: keeps the app usable on the course with weak signal.
 // Bump VERSION whenever you change app files so phones pick up the update.
-const VERSION = 'tiger5-v37';
+const VERSION = 'tiger5-v38';
 const SHELL = [
   './', 'index.html', 'app.js', 'config.js', 'courses.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/favicon-32.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'
@@ -48,4 +48,29 @@ self.addEventListener('fetch', (e) => {
       }))
     );
   }
+});
+
+// Push notifications, sent by the `push` edge function in Supabase.
+self.addEventListener('push', (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (_) { d = { body: e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(d.title || 'Sandie', {
+    body: d.body || '',
+    icon: 'icons/icon-192.png',
+    tag: d.tag || undefined,
+    renotify: !!d.tag,
+    data: { url: d.url || './' }
+  }));
+});
+
+// Tapping one opens the app on the right screen (or switches the open app there).
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = new URL((e.notification.data && e.notification.data.url) || './', self.registration.scope);
+  if (url.origin !== location.origin) return;
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+    const win = list.find((w) => new URL(w.url).origin === location.origin);
+    if (win) { win.postMessage({ open: url.href }); return win.focus(); }
+    return self.clients.openWindow(url.href);
+  }));
 });

@@ -263,7 +263,8 @@ async function flushOutbox(){
   }
  }catch(e){if(!isNetErr(e))fail(e,'A saved round didn’t post.')}
  flushing=false;
- if(posted){toast(posted===1?'Round posted':posted+' rounds posted');loadAll()}
+ if(posted){toast(posted===1?'Round posted':posted+' rounds posted');await loadAll()}
+ return posted;
 }
 
 /* ---------- invites ---------- */
@@ -440,7 +441,7 @@ function roundItem(r,showWho=true){
   <div class="score"><b>${r.score}</b><span>${r.complete?rel(r.score-r.parPlayed):r.holesPlayed+' holes'}</span></div></button>`;
 }
 /* ---------- settings ---------- */
-const APP_VERSION='v37';
+const APP_VERSION='v38';
 const GEAR=`<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.86a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1Z"/></svg>`;
 // Settings: grouped like a phone's settings app. Profile, Payments, Account, About.
 function settingsView(){
@@ -461,6 +462,7 @@ function settingsView(){
    <div class="row"><span class="setat">@</span><input id="venmo" maxlength="30" autocapitalize="none" autocomplete="off" placeholder="your-venmo" value="${esc(venmo)}"><button class="setbtn" style="flex:none" data-act="savevenmo">Save</button></div>
    <p class="hint" style="margin:6px 0 0">Only your friends can see this. It shows on your profile and next to what people owe you.</p></div>
  </div>`;
+ h+=notifSettings();
  h+=`<div class="setgroup"><div class="sethead">Account</div>
   <div class="setrow"><span class="setlab">Signed In As</span><span class="setval">${esc(S.email||'—')}</span></div>
   ${S.confirm==='signout'?`<div class="setrow"><span class="setlab">Sign out of Sandie on this phone?</span><div class="setctl"><button class="setbtn red" data-act="signout">Sign Out</button><button class="setbtn" data-act="cancelc">Cancel</button></div></div>`
@@ -474,19 +476,142 @@ function settingsView(){
  return h;
 }
 
+/* ---------- push notifications ---------- */
+// Categories match push_prefs.off in the database (supabase/push.sql).
+const PUSH_CATS=[
+ ['friends','Friend Requests','Requests and accepts'],
+ ['social','Likes & Comments','Likes, comments and attests on your rounds'],
+ ['rounds','Rounds Posted for You','When a friend scores your round'],
+ ['board','Betting Board','New bets from friends, wins and losses'],
+ ['money','Money','Trip settle-ups and “you owe me” reminders'],
+ ['titles','Leaderboard Titles','When you win or lose a title'],
+];
+const isIOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const standalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+const pushCapable=()=>location.protocol==='https:'&&'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window&&!!CFG.vapidPublicKey;
+function pushStatus(){
+ if(!pushCapable())return isIOS&&!standalone()?'install':'unsupported';
+ if(Notification.permission==='denied')return 'denied';
+ return S.pushOn?'on':'off';
+}
+const b64Bytes=s=>{s=s.replace(/-/g,'+').replace(/_/g,'/');return Uint8Array.from(atob(s+'==='.slice((s.length+3)%4)),c=>c.charCodeAt(0))};
+const subArgs=sub=>{const j=sub.toJSON();return{endpoint:j.endpoint,p256dh:j.keys.p256dh,auth:j.keys.auth}};
+// Keeps this phone's registration current (push services rotate them) and loads your settings.
+async function pushSync(){
+ if(!pushCapable()||!sb||!S.me)return;
+ try{
+  const reg=await navigator.serviceWorker.ready,sub=await reg.pushManager.getSubscription();
+  S.pushOn=!!sub&&Notification.permission==='granted';
+  if(S.pushOn){const {error}=await sb.rpc('save_push_subscription',subArgs(sub));if(error)console.error(error)}
+  const {data}=await sb.from('push_prefs').select('off').eq('user_id',S.me).maybeSingle();
+  S.pushOff=data&&data.off||[];
+  if(S.view==='settings')render();
+ }catch(e){console.error(e)}
+}
+async function pushOn(){
+ if(S.busy)return;
+ S.busy='push';render();
+ try{
+  const perm=await Notification.requestPermission();
+  if(perm!=='granted'){S.busy=false;render();return toast(perm==='denied'?'Notifications are blocked. Allow them for Sandie in your phone’s Settings.':'Notifications weren’t turned on.')}
+  const reg=await navigator.serviceWorker.ready;
+  const sub=await reg.pushManager.getSubscription()||await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64Bytes(CFG.vapidPublicKey)});
+  const {error}=await sb.rpc('save_push_subscription',subArgs(sub));if(error)throw error;
+  S.pushOn=true;toast('Notifications on');
+ }catch(e){fail(e,'Couldn’t turn on notifications.')}
+ S.busy=false;render();
+}
+// quiet: used on sign-out so the next person on this phone doesn't get your notifications.
+async function pushOff(quiet){
+ try{
+  const reg=pushCapable()&&await navigator.serviceWorker.getRegistration(),sub=reg&&await reg.pushManager.getSubscription();
+  if(sub){await sb.from('push_subscriptions').delete().eq('endpoint',sub.endpoint);await sub.unsubscribe()}
+  S.pushOn=false;
+  if(!quiet){toast('Notifications off on this phone');render()}
+ }catch(e){if(!quiet)fail(e,'Couldn’t turn off notifications.')}
+}
+async function pushCat(k){
+ const off=new Set(S.pushOff||[]);off.has(k)?off.delete(k):off.add(k);
+ S.pushOff=[...off];render();
+ const {error}=await sb.from('push_prefs').upsert({user_id:S.me,off:S.pushOff});
+ if(error)fail(error,'Couldn’t save that setting.');
+}
+function notifSettings(){
+ const st=pushStatus(),note=(t,p)=>`<div class="setrow col"><span class="setlab">${t}</span><p class="hint" style="margin:0">${p}</p></div>`;
+ let h=`<div class="setgroup"><div class="sethead">Notifications</div>`;
+ if(st==='install')h+=note('Add Sandie to Your Home Screen First','On iPhone, notifications only work in the home-screen app. In Safari, tap Share, then Add to Home Screen, and open Sandie from there.');
+ else if(st==='unsupported')h+=note('Not Available Here','This browser can’t show notifications. Use Sandie from your iPhone home screen, or Chrome on Android.');
+ else if(st==='denied')h+=note('Notifications Are Blocked','Allow notifications for Sandie in your phone’s Settings, then come back here.');
+ else{
+  h+=`<div class="setrow"><span class="setlab">Notifications on This Phone</span><div class="setctl">${st==='on'?`<button class="setbtn" data-act="pushoff">Turn Off</button>`
+   :`<button class="setbtn go" data-act="pushon" ${S.busy==='push'?'disabled':''}>${S.busy==='push'?'Turning On…':'Turn On'}</button>`}</div></div>`;
+  if(st==='on')h+=PUSH_CATS.map(([k,l,n])=>{const on=!(S.pushOff||[]).includes(k);
+   return `<button class="setrow setlink" role="switch" aria-checked="${on}" data-pushcat="${k}"><span class="setlab">${l}<small>${n}</small></span><span class="switch" aria-hidden="true"></span></button>`}).join('');
+  else h+=`<div class="setrow col"><p class="hint" style="margin:0">Get a buzz for friend requests, comments, bets, settle-ups and Leaderboard titles.</p></div>`;
+ }
+ return h+`</div>`;
+}
+// Opening a notification: ?go=view&id=… on a cold start, or a message from the service worker.
+function openLink(href){
+ let q;try{q=new URL(href,location.href).searchParams}catch(e){return}
+ const v=q.get('go'),id=q.get('id')||undefined;
+ if(!v||!VIEWS.includes(v))return;
+ if(v==='round'){const u=Object.keys(S.rounds).find(x=>(S.rounds[x]||[]).some(r=>r.id===id));return u?go('round',u+'/'+id):go('feed')}
+ go(v,id);
+}
+// Messages only the app can work out (who owes whom, who took a title) go through push_outbox.
+async function sendSettleUp(id){
+ const t=S.trips.find(x=>x.id===id);if(!t)return;
+ // Net bets and receipts together, so each pair of players gets one number.
+ const pair={},lines={},add=(u,l)=>(lines[u]=lines[u]||[]).push(l);
+ [...settleBets(t).pays,...settleReceipts(t).pays].forEach(p=>{const [a,b]=[p.from,p.to].sort(),k=a+'|'+b;pair[k]=(pair[k]||0)+(p.from===a?p.amt:-p.amt)});
+ for(const k in pair){
+  const [a,b]=k.split('|'),v=Math.round(pair[k]*100)/100;if(Math.abs(v)<0.01)continue;
+  const [from,to,amt]=v>0?[a,b,v]:[b,a,-v];
+  add(from,{u:to,amt,dir:'owe'});add(to,{u:from,amt,dir:'owed'});
+ }
+ const rows=Object.entries(lines).filter(([u])=>u!==S.me).map(([u,l])=>({recipient:u,kind:'owe',trip_id:t.id,lines:l.slice(0,12)}));
+ if(!rows.length)return;
+ const {error}=await sb.from('push_outbox').insert(rows);
+ if(error)console.error(error);else toast('Settle-up sent to '+rows.length+' player'+(rows.length===1?'':'s'));
+}
+async function nudge(u,amt,trip){
+ const row={recipient:u,kind:'nudge',amount:amt};if(trip)row.trip_id=trip;
+ const {error}=await sb.from('push_outbox').insert(row);
+ if(error)return /already reminded/i.test(error.message||'')?toast('You already reminded '+handle(u)+' today.'):fail(error,'Couldn’t send the reminder.');
+ toast('Reminder sent to '+handle(u));
+}
+// After you post, friends who gained or lost a Leaderboard title hear about it.
+async function announceTitles(before){
+ const after=titleHolders(),rows=[],mine=[];
+ for(const k in after){
+  const was=(before[k]||{who:[]}).who,now=after[k].who,gained=now.filter(u=>!was.includes(u));
+  if(!gained.length)continue;
+  gained.forEach(u=>u===S.me?mine.push(after[k].c):rows.push({recipient:u,kind:'title',title_k:k}));
+  was.filter(u=>!now.includes(u)&&u!==S.me).forEach(u=>rows.push({recipient:u,kind:'title',title_k:k,lost:true,other:gained[0]}));
+ }
+ if(mine.length)setTimeout(()=>toast(mine.map(c=>c.emo+' You’re the new '+c.title).join(' · ')),1500);
+ if(rows.length){const {error}=await sb.from('push_outbox').insert(rows);if(error)console.error(error)}
+}
+
 /* ---------- leaderboard ---------- */
 // Titles: whoever leads a Leaderboard category (you and your friends, all time) earns that
 // category's title (LB_CATS title/emo). Ties share it. Count categories need at least 1;
 // "lowest wins" categories need at least two players with a value, so there's competition.
-function leaderTitles(u){
- const group=[S.me,...friendIds()];if(group.length<2||!group.includes(u))return [];
- return LB_CATS.filter(c=>c.title).flatMap(c=>{
+// titleHolders: {categoryKey: {c, best, who:[uids]}} for you and your friends.
+function titleHolders(){
+ const group=[S.me,...friendIds()],out={};if(group.length<2)return out;
+ LB_CATS.filter(c=>c.title).forEach(c=>{
   const vals=group.map(x=>{const all=S.rounds[x]||[];return [x,c.val(all,all)]}).filter(([,v])=>v!=null&&(c.low||v>0));
-  if(!vals.length||(c.low&&vals.length<2))return [];
+  if(!vals.length||(c.low&&vals.length<2))return;
   const best=c.low?Math.min(...vals.map(v=>v[1])):Math.max(...vals.map(v=>v[1]));
-  const mine=vals.find(([x])=>x===u);
-  return mine&&mine[1]===best?[{...c,value:mine[1]}]:[];
+  out[c.k]={c,best,who:vals.filter(v=>v[1]===best).map(v=>v[0])};
  });
+ return out;
+}
+function leaderTitles(u){
+ if(![S.me,...friendIds()].includes(u))return [];
+ return Object.values(titleHolders()).filter(x=>x.who.includes(u)).map(x=>({...x.c,value:x.best}));
 }
 // Every category ranks you and your friends over the chosen period.
 // low:true means the smallest number leads. Values of null mean "not enough rounds".
@@ -879,7 +1004,7 @@ function settleCard(t,sv,title,note){
  const mem=S.tripMembers[t.id]||[],who=(u)=>u===S.me?'You':handle(u);
  const sgn=(v)=>{v=Math.round((v||0)*100)/100;return `<span class="${v>0?'pos':v<0?'neg':''}">${v>0?'+':v<0?'−':''}${fmtMoney(v)}</span>`};
  return `<h2>${esc(title)}</h2><div class="card">`
-  +(sv.pays.length?`<table><tbody>${sv.pays.map(p=>`<tr><td>${av(p.from,'xs')} ${esc(who(p.from))} pay${p.from===S.me?'':'s'} ${esc(p.to===S.me?'you':handle(p.to))}</td><td class="n">${fmtMoney(p.amt)}${p.from===S.me?venmoLink(p.to,'Venmo'):''}</td></tr>`).join('')}</tbody></table>`:`<p style="margin:0">Nobody owes anything yet.</p>`)
+  +(sv.pays.length?`<table><tbody>${sv.pays.map(p=>`<tr><td>${av(p.from,'xs')} ${esc(who(p.from))} pay${p.from===S.me?'':'s'} ${esc(p.to===S.me?'you':handle(p.to))}</td><td class="n">${fmtMoney(p.amt)}${p.from===S.me?venmoLink(p.to,'Venmo'):p.to===S.me?`<button class="nudge" data-act="nudge" data-u="${esc(p.from)}" data-amt="${p.amt}" data-trip="${esc(t.id)}">Remind</button>`:''}</td></tr>`).join('')}</tbody></table>`:`<p style="margin:0">Nobody owes anything yet.</p>`)
   +`<p class="hint">Net: ${mem.map(u=>`${esc(who(u))} ${sgn(sv.net[u])}`).join(' · ')}</p><p class="hint">${esc(note)} The app only keeps track; settle up however your group pays each other.</p></div>`;
 }
 function expensesSection(t,mem,who){
@@ -1056,7 +1181,7 @@ function boardView(){
  const bal=boardBalances();
  if(bal.length){
   const net=bal.reduce((a,[,v])=>a+v,0);
-  h+=`<div class="card"><div class="bet-head"><b>Your Board Balance</b><span class="money ${net>0?'pos':net<0?'neg':''}">${net>0?'+':net<0?'−':''}${fmtMoney(net)}</span></div><table style="margin-top:6px"><tbody>${bal.map(([u,v])=>`<tr><td>${v>0?esc(handle(u))+' owes you':'You owe '+esc(handle(u))}</td><td class="n ${v>0?'pos':'neg'}">${fmtMoney(v)}${v<0?venmoLink(u,'Venmo'):''}</td></tr>`).join('')}</tbody></table><p class="hint">Totals from every settled bet. Settle up however your group pays each other.</p></div>`;
+  h+=`<div class="card"><div class="bet-head"><b>Your Board Balance</b><span class="money ${net>0?'pos':net<0?'neg':''}">${net>0?'+':net<0?'−':''}${fmtMoney(net)}</span></div><table style="margin-top:6px"><tbody>${bal.map(([u,v])=>`<tr><td>${v>0?esc(handle(u))+' owes you':'You owe '+esc(handle(u))}</td><td class="n ${v>0?'pos':'neg'}">${fmtMoney(v)}${v<0?venmoLink(u,'Venmo'):`<button class="nudge" data-act="nudge" data-u="${esc(u)}" data-amt="${v}">Remind</button>`}</td></tr>`).join('')}</tbody></table><p class="hint">Totals from every settled bet. Settle up however your group pays each other.</p></div>`;
  }
  if(!S.board.length)return h+`<div class="card empty"><b>Nothing on the Board Yet</b>Post a bet for later, like “Jon breaks 80 at Whiskey Creek”. Your friends see it and pick a side.</div>`;
  [['open','Taking Picks'],['locked','Picks Locked, Waiting on the Result'],['settled','Settled'],['void','Called Off']].forEach(([st,label])=>{
@@ -1293,7 +1418,7 @@ try{
 }catch(e){}
 async function postRound(){
  if(!draft||S.busy)return;
- const ix=myIndex(),t=calc(draft,ix),sc=draft.scorecards||[];
+ const ix=myIndex(),t=calc(draft,ix),sc=draft.scorecards||[],titlesBefore=titleHolders();
  // Your round, plus one round per friend you scored (posted to their card, marked as entered by you).
  const rows=[JSON.parse(JSON.stringify(toRow(draft,t,ix,{scorecards:sc})))];
  (draft.others||[]).forEach(o=>{const oix=hcp(S.rounds[o.uid]).index,ot=calc(otherRound(o),oix);
@@ -1304,7 +1429,7 @@ async function postRound(){
  draft=null;saveDraft();playView='start';cacheSave();
  go('feed');
  if(!navigator.onLine)return toast('Saved. It posts when you have signal.');
- await flushOutbox();
+ if(await flushOutbox())announceTitles(titlesBefore);
 }
 async function importOld(){
  const old=oldRounds();if(!old.length||S.busy)return;
@@ -1384,6 +1509,10 @@ document.addEventListener('click',async e=>{
  if(a==='pickcourse'){S.picking=!S.picking;if(S.picking)S.cstate=(COURSES[S.courseKey]&&COURSES[S.courseKey].state)||S.cstate||'VA';return render()}
  if(d.withsel){const s=new Set(S.withSel||[]);if(s.has(d.withsel))s.delete(d.withsel);else{if(s.size>=3)return toast('A group is you plus 3 friends.');s.add(d.withsel)}S.withSel=[...s];return render()}
  if(d.badgetip)return toast(d.badgetip);
+ if(d.pushcat)return pushCat(d.pushcat);
+ if(a==='pushon')return pushOn();
+ if(a==='pushoff')return pushOff();
+ if(a==='nudge'){b.disabled=true;await nudge(d.u,+d.amt,d.trip);b.disabled=false;return}
  if(d.lbper){S.lbPeriod=d.lbper;return render()}
  if(d.lbcat){S.lbCat=d.lbcat;return render()}
  if(d.viewphoto){S.photoView=d.viewphoto;return render()}
@@ -1413,7 +1542,7 @@ document.addEventListener('click',async e=>{
    return render();
   }
   if(!data.session){toast('Account created, but email confirmation is on in Supabase. Turn off “Confirm email”, then sign in.');S.authStep='signin';return render()}
-  S.me=data.user.id;S.email=data.user.email||'';S.status='loading';render();return loadAll();
+  S.me=data.user.id;S.email=data.user.email||'';S.status='loading';render();pushSync();return loadAll();
  }
  if(a==='join'){
   const v=$('#handle').value.trim();if(!v)return toast('Pick a name your friends will recognize.');
@@ -1422,7 +1551,7 @@ document.addEventListener('click',async e=>{
   S.busy=false;if(error){fail(error,'Couldn’t save your name.');return render()}
   S.status='loading';return loadAll();
  }
- if(a==='signout'){await sb.auth.signOut();LS.set(CACHEKEY,null);try{sessionStorage.removeItem('t19-place')}catch(e){}location.reload();return}
+ if(a==='signout'){await pushOff(true);await sb.auth.signOut();LS.set(CACHEKEY,null);try{sessionStorage.removeItem('t19-place')}catch(e){}location.reload();return}
  if(a==='editname'){S.editName=true;return render()}
  if(a==='cancelname'){S.editName=false;return render()}
  if(a==='savename'){
@@ -1498,7 +1627,9 @@ document.addEventListener('click',async e=>{
    :{ended_at:null,end_date:[t.end_date,today()].sort()[1]}; // reopening runs at least through today
   const {error}=await sb.from('trips').update(patch).eq('id',t.id);
   if(error)return fail(error,a==='endtrip'?'Couldn’t end the trip.':'Couldn’t reopen the trip.');
-  toast(a==='endtrip'?'Trip ended':'Trip reopened');return loadAll();
+  toast(a==='endtrip'?'Trip ended':'Trip reopened');await loadAll();
+  if(a==='endtrip')sendSettleUp(t.id);
+  return;
  }
  if(a==='createtrip')return createTrip();
  if(a==='addbet')return addBet();
@@ -1568,6 +1699,8 @@ if('serviceWorker' in navigator&&location.protocol==='https:'){
  // (skipped on the very first install, when nothing was running before).
  const hadController=!!navigator.serviceWorker.controller;let reloaded=false;
  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(hadController&&!reloaded&&!S.busy){reloaded=true;try{sessionStorage.setItem('t19-skip-splash','1')}catch(e){}location.reload()}});
+ // A tapped notification while the app is already open.
+ navigator.serviceWorker.addEventListener('message',e=>{const u=e.data&&e.data.open;if(typeof u==='string'&&S.status==='ready')loadAll().then(()=>openLink(u))});
  navigator.serviceWorker.register('sw.js').then(reg=>{
   // Installed home-screen apps rarely restart, so look for updates whenever the app is reopened.
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')reg.update().catch(()=>{})});
@@ -1576,6 +1709,9 @@ if('serviceWorker' in navigator&&location.protocol==='https:'){
 
 (async()=>{
  captureInvite();
+ // Opened from a notification: remember where to go, then tidy the address bar.
+ const link=/[?&]go=/.test(location.search)?location.href:null;
+ if(link)history.replaceState(null,'',location.pathname+location.hash);
  render();
  if(!sb){S.status='error';return render()}
  sb.auth.onAuthStateChange((ev)=>{if(ev==='SIGNED_OUT'){S.me=null;S.status='auth';render()}});
@@ -1583,5 +1719,7 @@ if('serviceWorker' in navigator&&location.protocol==='https:'){
  if(!session){S.status='auth';return render()}
  S.me=session.user.id;S.email=session.user.email||'';
  if(cacheLoad()){S.status='ready';addPendingLocal();render()}
- loadAll();
+ pushSync();
+ await loadAll();
+ if(link&&S.status==='ready')openLink(link);
 })();
