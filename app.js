@@ -452,7 +452,7 @@ function roundItem(r,showWho=true){
   <div class="score"><b>${r.score}</b><span>${r.complete?rel(r.score-r.parPlayed):r.holesPlayed+' holes'}</span></div></button>`;
 }
 /* ---------- settings ---------- */
-const APP_VERSION='v44';
+const APP_VERSION='v45';
 const GEAR=`<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.86a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1Z"/></svg>`;
 // Settings: grouped like a phone's settings app. Profile, Payments, Account, About.
 function settingsView(){
@@ -496,7 +496,7 @@ const PUSH_CATS=[
  ['board','Betting Board','New bets from friends, wins and losses'],
  ['money','Money','Trip settle-ups and “you owe me” reminders'],
  ['titles','Leaderboard Titles','When you win or lose a title'],
- ['trips','Trip Tee Times','When you’re put in a group or a tee time changes'],
+ ['trips','Trip Tee Times','Added to a group, tee time changes, and a reminder the night before'],
 ];
 const isIOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const standalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
@@ -1064,7 +1064,7 @@ async function saveTee(t){
  const course=$('#tccourse').value.trim(),time=$('#tctime').value,day=$('#tcday').value,players=(S.tcSel||[]).filter(u=>(S.tripMembers[t.id]||[]).includes(u)).slice(0,4);
  if(!time)return toast('Pick a tee time.');
  if(!course)return toast('Pick a course.');
- const key=courseKeyByName(course),row={trip_id:t.id,day,time,course,course_key:key,tee:$('#tctee').value.trim()||null,players,note:$('#tcnote').value.trim()||null};
+ const key=courseKeyByName(course),row={trip_id:t.id,day,time,course,course_key:key,tee:$('#tctee').value.trim()||null,players,note:$('#tcnote').value.trim()||null,reminded_on:null}; // an edit gets a fresh night-before reminder
  S.busy=true;render();
  const {error}=S.teeEdit?await sb.from('tee_times').update(row).eq('id',S.teeEdit):await sb.from('tee_times').insert(row);
  S.busy=false;
